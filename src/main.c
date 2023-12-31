@@ -124,26 +124,43 @@ int main(int argc, char** argv)
 
   /* declare vertices */
   float vertices[] = {
-    -0.5, -0.5, 0.0,
-    0.5, -0.5, 0.0,
-    0.0,  0.5, 0.0
+    0.5f,  0.5f, 0.0f,  // top right
+    0.5f, -0.5f, 0.0f,  // bottom right
+    -0.5f, -0.5f, 0.0f,  // bottom left
+    -0.5f,  0.5f, 0.0f   // top left
+  };
+  unsigned int indices[] = {  // note that we start from 0!
+    0, 1, 3,   // first triangle
+    1, 2, 3    // second triangle
   };
 
-  unsigned int VBO;
-  glGenBuffers(1, &VBO);
-
+  // declare and generate the vertex array, vertex buffer, and element index buffer
   unsigned int VAO;
   glGenVertexArrays(1, &VAO);
+  unsigned int VBO;
+  glGenBuffers(1, &VBO);
+  unsigned int EBO;
+  glGenBuffers(1, &EBO);
+
+  // bind the vertex array
   glBindVertexArray(VAO);
 
+  // bind the array buffer
   glBindBuffer(GL_ARRAY_BUFFER, VBO);
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+  // bind the element array buffer
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
   /* end declare vertices */
 
   /* set up vertex attribute array */
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
   glEnableVertexAttribArray(0);
   /* end setting up vertex attribute array */
+
+  // un-comment to use wireframe mode:
+  // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
   /* Loop until the user closes the window */
   while (!glfwWindowShouldClose(window)) {
@@ -155,10 +172,12 @@ int main(int argc, char** argv)
 
     /* *use* shader program */
     glUseProgram(shaderProgram);
-    glBindVertexArray(VAO);
 
-    /* draw the darn triangles */
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+    /* draw the darn triangles, using the vertex array element array buffer */
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
 
     /* Swap front and back buffers */
     glfwSwapBuffers(window);
