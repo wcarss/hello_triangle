@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <shader.h>
 
 #define INFOLOG_LENGTH 512
 #define BUFFER_OFFSET(i) ((char *)NULL + (i))
@@ -12,10 +13,16 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
   glViewport(0, 0, width, height);
 }
 
-void processInput(GLFWwindow *window)
+void processInput(GLFWwindow *window, float* offset)
 {
   if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
     glfwSetWindowShouldClose(window, true);
+  }
+
+  if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
+    offset[0] -= 0.01;
+  } else if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+    offset[0] += 0.01;
   }
 }
 
@@ -24,6 +31,7 @@ int main(int argc, char** argv)
   const int WINDOW_WIDTH = 1280;
   const int WINDOW_HEIGHT = 720;
   GLFWwindow* window;
+  float offset[3] = {0.0f, 0.0f, 0.0f};
 
   /* Initialize the library */
   if (!glfwInit()) {
@@ -56,75 +64,7 @@ int main(int argc, char** argv)
 
   glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-  /* vertex shader */
-  unsigned int vertexShader;
-  const char *vertexShaderSource = "#version 410 core\n"
-                                   "layout (location = 0) in vec3 aPos;\n"
-                                   "layout (location = 1) in vec3 aColor;\n"
-                                   "out vec3 ourColor;\n"
-                                   "void main() {\n"
-                                   "  gl_Position = vec4(aPos, 1.0);\n"
-                                   "  ourColor = aColor;\n"
-                                   "}";
-
-  vertexShader = glCreateShader(GL_VERTEX_SHADER);
-  glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-  glCompileShader(vertexShader);
-
-  int vertexShaderSuccess;
-  char vertexShaderInfoLog[INFOLOG_LENGTH];
-  glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &vertexShaderSuccess);
-
-  if (!vertexShaderSuccess) {
-    glGetShaderInfoLog(vertexShader, INFOLOG_LENGTH, NULL, vertexShaderInfoLog);
-    printf("ERROR::SHADER::VERTEX::COMPILATION_FAILED\n%s\n", vertexShaderInfoLog);
-  }
-
-  /* end vertex shader */
-
-  /* fragment shader */
-  unsigned int fragmentShader;
-  const char *fragmentShaderSource = "#version 410 core\n"
-                                     "out vec4 FragColor;\n"
-                                     "in vec3 ourColor;\n"
-                                     "void main() {\n"
-                                     "  FragColor = vec4(ourColor, 1.0);\n"
-                                     "}";
-
-  fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-  glCompileShader(fragmentShader);
-
-  int fragmentShaderSuccess;
-  char fragmentShaderInfoLog[INFOLOG_LENGTH];
-  glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &fragmentShaderSuccess);
-
-  if (!fragmentShaderSuccess) {
-    glGetShaderInfoLog(fragmentShader, INFOLOG_LENGTH, NULL, fragmentShaderInfoLog);
-    printf("ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n%s\n", fragmentShaderInfoLog);
-  }
-
-  /* end fragment shader */
-
-  /* shader program */
-  unsigned int shaderProgram;
-  shaderProgram = glCreateProgram();
-  glAttachShader(shaderProgram, vertexShader);
-  glAttachShader(shaderProgram, fragmentShader);
-  glLinkProgram(shaderProgram);
-
-  int shaderProgramSuccess;
-  char shaderProgramInfoLog[INFOLOG_LENGTH];
-  glGetProgramiv(shaderProgram, GL_LINK_STATUS, &shaderProgramSuccess);
-
-  if (!shaderProgramSuccess) {
-    glGetProgramInfoLog(shaderProgram, INFOLOG_LENGTH, NULL, shaderProgramInfoLog);
-    printf("ERROR::SHADER::PROGRAM::LINK_FAILED\n%s\n", shaderProgramInfoLog);
-  }
-
-  glDeleteShader(vertexShader);
-  glDeleteShader(fragmentShader);
-  /* end shader program */
+  Shader ourShader("shaders/shader.vs", "shaders/shader.fs");
 
   /* declare vertices */
   float vertices[] = {
@@ -161,14 +101,14 @@ int main(int argc, char** argv)
 
   /* Loop until the user closes the window */
   while (!glfwWindowShouldClose(window)) {
-    processInput(window);
+    processInput(window, offset);
 
     /* Render here */
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the buffers
 
-    /* *use* shader program */
-    glUseProgram(shaderProgram);
+    ourShader.use();
+    ourShader.setVec3f("offset", offset[0], offset[1], offset[2]);
 
     /* draw the darn triangles, using the vertex array element array buffer */
     glBindVertexArray(VAO);
