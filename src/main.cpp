@@ -3,6 +3,7 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <shader.h>
+#include <stb_image.h>
 
 #define INFOLOG_LENGTH 512
 #define BUFFER_OFFSET(i) ((char *)NULL + (i))
@@ -13,7 +14,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
   glViewport(0, 0, width, height);
 }
 
-void processInput(GLFWwindow *window, float* offset)
+void processInput(GLFWwindow *window, float* offset, float *textureSwap)
 {
   if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
     glfwSetWindowShouldClose(window, true);
@@ -24,6 +25,20 @@ void processInput(GLFWwindow *window, float* offset)
   } else if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
     offset[0] += 0.01;
   }
+
+  if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
+    offset[1] -= 0.01;
+  } else if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
+    offset[1] += 0.01;
+  }
+
+  if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+    *textureSwap += 0.01;
+    std::cout << "textureSwap up: " << *textureSwap << std::endl;
+  } else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+    *textureSwap -= 0.01;
+    std::cout << "textureSwap down: " << *textureSwap << std::endl;
+  }
 }
 
 int main(int argc, char** argv)
@@ -32,6 +47,7 @@ int main(int argc, char** argv)
   const int WINDOW_HEIGHT = 720;
   GLFWwindow* window;
   float offset[3] = {0.0f, 0.0f, 0.0f};
+  float textureSwap = 0.2;
 
   /* Initialize the library */
   if (!glfwInit()) {
@@ -64,14 +80,64 @@ int main(int argc, char** argv)
 
   glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
+  /* texture loading */
+  // flip images to a right-side-up view:
+  stbi_set_flip_vertically_on_load(true);
+
+  int width1, height1, nrChannels1;
+  unsigned int texture1;
+  glGenTextures(1, &texture1);
+  glBindTexture(GL_TEXTURE_2D, texture1);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  unsigned char *data1 = stbi_load("images/wall.jpg", &width1, &height1, &nrChannels1, 0);
+
+  if (data1) {
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width1, height1, 0, GL_RGB, GL_UNSIGNED_BYTE, data1);
+    glGenerateMipmap(GL_TEXTURE_2D);
+  } else {
+    std::cout << "Failed to load texture" << std::endl;
+  }
+
+  stbi_image_free(data1);
+
+  int width2, height2, nrChannels2;
+  unsigned int texture2;
+  glGenTextures(1, &texture2);
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, texture2);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  unsigned char *data2 = stbi_load("images/awesomeface.png", &width2, &height2, &nrChannels2, 0);
+
+  if (data2) {
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width2, height2, 0, GL_RGBA, GL_UNSIGNED_BYTE, data2);
+    glGenerateMipmap(GL_TEXTURE_2D);
+  } else {
+    std::cout << "Failed to load texture" << std::endl;
+  }
+
+  stbi_image_free(data2);
+
+  /* end texture loading */
+
   Shader ourShader("shaders/shader.vs", "shaders/shader.fs");
 
   /* declare vertices */
   float vertices[] = {
-    // positions         // colors
-    0.5f, -0.5f, 0.0f,   1.0f, 0.0f, 0.0f,   // bottom right
-    -0.5f, -0.5f, 0.0f,  0.0f, 1.0f, 0.0f,   // bottom left
-    0.0f,  0.5f, 0.0f,   0.0f, 0.0f, 1.0f    // top
+    // positions          // colors           // texture coords
+    0.5f,  0.5f, 0.0f,    1.0f, 0.0f, 0.0f,   0.58f, 0.58f,   // top right
+    0.5f, -0.5f, 0.0f,    0.0f, 1.0f, 0.0f,   0.58f, 0.42f,   // bottom right
+    -0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   0.42f, 0.42f,   // bottom left
+    -0.5f,  0.5f, 0.0f,   1.0f, 1.0f, 0.0f,   0.42f, 0.58f    // top left
+  };
+  unsigned int indices[] = {  // note that we start from 0!
+    0, 1, 3,   // first triangle
+    1, 2, 3    // second triangle
   };
 
   // declare and generate the vertex array, vertex buffer, and element index buffer
@@ -79,6 +145,8 @@ int main(int argc, char** argv)
   glGenVertexArrays(1, &VAO);
   unsigned int VBO;
   glGenBuffers(1, &VBO);
+  unsigned int EBO;
+  glGenBuffers(1, &EBO);
 
   // bind the vertex array
   glBindVertexArray(VAO);
@@ -86,22 +154,35 @@ int main(int argc, char** argv)
   // bind the array buffer
   glBindBuffer(GL_ARRAY_BUFFER, VBO);
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+  // bind the element buffer
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
   /* end declare vertices */
 
-  /* set up vertex attribute array */
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+  /* set up attribute arrays */
+  // vertex attributes
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
   glEnableVertexAttribArray(0);
-  // color attribute
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+  // color attributes
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
   glEnableVertexAttribArray(1);
-  /* end setting up vertex attribute array */
+  // texture attributes
+  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+  glEnableVertexAttribArray(2);
+  /* end setting up attribute arrays */
 
   // un-comment to use wireframe mode:
   // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
+  // set up textures in shader:
+  ourShader.use(); // don't forget to activate the shader before setting uniforms!
+  glUniform1i(glGetUniformLocation(ourShader.ID, "texture1"), 0); // set it manually
+  ourShader.setInt("texture2", 1); // or with shader class
+
   /* Loop until the user closes the window */
   while (!glfwWindowShouldClose(window)) {
-    processInput(window, offset);
+    processInput(window, offset, &textureSwap);
 
     /* Render here */
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -109,10 +190,15 @@ int main(int argc, char** argv)
 
     ourShader.use();
     ourShader.setVec3f("offset", offset[0], offset[1], offset[2]);
+    ourShader.setFloat("textureSwap", textureSwap);
 
     /* draw the darn triangles, using the vertex array element array buffer */
+    glActiveTexture(GL_TEXTURE0); // activate the texture unit first before binding texture
+    glBindTexture(GL_TEXTURE_2D, texture1);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture2);
     glBindVertexArray(VAO);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 
     /* Swap front and back buffers */
