@@ -24,26 +24,28 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
   glViewport(0, 0, width, height);
 }
 
-void processInput(GLFWwindow *window, Camera* cam, float *textureSwap)
+void processInput(GLFWwindow *window, Camera* cam, float *textureSwap, float deltaTime)
 {
   if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
     glfwSetWindowShouldClose(window, true);
   }
 
+  float deltaSpeed = cam->speed * deltaTime;
+
   if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
-    cam->pos += cam->speed * cam->front;
+    cam->pos += deltaSpeed * cam->front;
   }
 
   if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-    cam->pos -= cam->speed * cam->front;
+    cam->pos -= deltaSpeed * cam->front;
   }
 
   if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
-    cam->pos -= glm::normalize(glm::cross(cam->front, cam->up)) * cam->speed;
+    cam->pos -= glm::normalize(glm::cross(cam->front, cam->up)) * deltaSpeed;
   }
 
   if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
-    cam->pos += glm::normalize(glm::cross(cam->front, cam->up)) * cam->speed;
+    cam->pos += glm::normalize(glm::cross(cam->front, cam->up)) * deltaSpeed;
   }
 
   if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
@@ -60,7 +62,7 @@ void setupCam(Camera* cam)
   cam->pos = glm::vec3(0.0f, 0.0f,  3.0f);
   cam->front = glm::vec3(0.0f, 0.0f, -1.0f);
   cam->up = glm::vec3(0.0f, 1.0f,  0.0f);
-  cam->speed = 0.05f;
+  cam->speed = 2.5f;
 }
 
 int main(int argc, char** argv)
@@ -71,6 +73,8 @@ int main(int argc, char** argv)
   float textureSwap = 0.2;
   Camera cam;
   setupCam(&cam);
+  float deltaTime = 0.0f; // Time between current frame and last frame
+  float lastFrame = 0.0f; // Time of last frame
 
   /* Initialize the library */
   if (!glfwInit()) {
@@ -252,7 +256,11 @@ int main(int argc, char** argv)
 
   /* Loop until the user closes the window */
   while (!glfwWindowShouldClose(window)) {
-    processInput(window, &cam, &textureSwap);
+    float currentFrame = glfwGetTime();
+    deltaTime = currentFrame - lastFrame;
+    lastFrame = currentFrame;
+
+    processInput(window, &cam, &textureSwap, deltaTime);
 
     /* Render here */
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
