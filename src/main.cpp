@@ -11,28 +11,39 @@
 #define INFOLOG_LENGTH 512
 #define BUFFER_OFFSET(i) ((char *)NULL + (i))
 
+typedef struct {
+  glm::vec3 pos;
+  glm::vec3 front;
+  glm::vec3 up;
+  float speed;
+} Camera;
+
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
   printf("famebuffer_size changed: %d, %d\n", width, height);
   glViewport(0, 0, width, height);
 }
 
-void processInput(GLFWwindow *window, float* offset, float *textureSwap)
+void processInput(GLFWwindow *window, Camera* cam, float *textureSwap)
 {
   if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
     glfwSetWindowShouldClose(window, true);
   }
 
-  if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
-    offset[0] -= 0.01;
-  } else if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
-    offset[0] += 0.01;
+  if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
+    cam->pos += cam->speed * cam->front;
   }
 
   if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-    offset[1] -= 0.01;
-  } else if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
-    offset[1] += 0.01;
+    cam->pos -= cam->speed * cam->front;
+  }
+
+  if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
+    cam->pos -= glm::normalize(glm::cross(cam->front, cam->up)) * cam->speed;
+  }
+
+  if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+    cam->pos += glm::normalize(glm::cross(cam->front, cam->up)) * cam->speed;
   }
 
   if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
@@ -44,13 +55,22 @@ void processInput(GLFWwindow *window, float* offset, float *textureSwap)
   }
 }
 
+void setupCam(Camera* cam)
+{
+  cam->pos = glm::vec3(0.0f, 0.0f,  3.0f);
+  cam->front = glm::vec3(0.0f, 0.0f, -1.0f);
+  cam->up = glm::vec3(0.0f, 1.0f,  0.0f);
+  cam->speed = 0.05f;
+}
+
 int main(int argc, char** argv)
 {
   const int WINDOW_WIDTH = 1280;
   const int WINDOW_HEIGHT = 720;
   GLFWwindow* window;
   float textureSwap = 0.2;
-  float offset[3] = {0.0f, 0.0f, 0.0f};
+  Camera cam;
+  setupCam(&cam);
 
   /* Initialize the library */
   if (!glfwInit()) {
@@ -232,19 +252,17 @@ int main(int argc, char** argv)
 
   /* Loop until the user closes the window */
   while (!glfwWindowShouldClose(window)) {
-    processInput(window, offset, &textureSwap);
+    processInput(window, &cam, &textureSwap);
 
     /* Render here */
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the buffers
 
     glm::mat4 model = glm::mat4(1.0f);
-    //model = glm::rotate(model, glm::radians(-55.0f), glm::vec3(1.0f, 0.0f, 0.0f));
     model = glm::rotate(model, (float)glfwGetTime() * glm::radians(50.0f), glm::vec3(0.5f, 1.0f, 0.0f));
 
     glm::mat4 view = glm::mat4(1.0f);
-    // note that we're translating the scene in the reverse direction of where we want to move
-    view = glm::translate(view, glm::vec3(-offset[0], 0.0f, offset[1] - 3.0f));
+    view = glm::lookAt(cam.pos, cam.pos + cam.front, cam.up);
 
     glm::mat4 projection;
     projection = glm::perspective(glm::radians(45.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
