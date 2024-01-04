@@ -11,11 +11,19 @@
 #define INFOLOG_LENGTH 512
 #define BUFFER_OFFSET(i) ((char *)NULL + (i))
 
+float pitch = 0.0f;
+float yaw = -90.0f;
+
 typedef struct {
   glm::vec3 pos;
   glm::vec3 front;
   glm::vec3 up;
   float speed;
+  float height;
+  bool jump;
+  float jumpstart;
+  float jumpspeed;
+  float fall;
 } Camera;
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
@@ -24,7 +32,41 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
   glViewport(0, 0, width, height);
 }
 
-void processInput(GLFWwindow *window, Camera* cam, float *textureSwap, float deltaTime)
+void mouse_callback(GLFWwindow* window, double xpos, double ypos)
+{
+  static float lastX = 0, lastY = 0;
+  static bool firstMouse = true;
+
+  if (firstMouse) { // initially set to true; prevents a big jump at first load
+    lastX = xpos;
+    lastY = ypos;
+    firstMouse = false;
+  }
+
+  float xoffset = xpos - lastX;
+  float yoffset = lastY - ypos; // reversed since y-coordinates range from bottom to top
+  lastX = xpos;
+  lastY = ypos;
+
+  // controls how much the mouse actually moves the camera
+  const float sensitivity = 0.4f;
+  xoffset *= sensitivity;
+  yoffset *= sensitivity;
+
+  yaw   += xoffset;
+  pitch += yoffset;
+
+  // keeps us locked to sane angles
+  if (pitch > 89.0f) {
+    pitch =  89.0f;
+  }
+
+  if (pitch < -89.0f) {
+    pitch = -89.0f;
+  }
+}
+
+void processInput(GLFWwindow *window, Camera* cam, float *textureSwap, float deltaTime, float currentTime)
 {
   if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
     glfwSetWindowShouldClose(window, true);
@@ -32,26 +74,36 @@ void processInput(GLFWwindow *window, Camera* cam, float *textureSwap, float del
 
   float deltaSpeed = cam->speed * deltaTime;
 
-  if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
-    cam->pos += deltaSpeed * cam->front;
-  }
-
-  if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-    cam->pos -= deltaSpeed * cam->front;
-  }
-
-  if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
-    cam->pos -= glm::normalize(glm::cross(cam->front, cam->up)) * deltaSpeed;
-  }
-
-  if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
-    cam->pos += glm::normalize(glm::cross(cam->front, cam->up)) * deltaSpeed;
+  if (!cam->jump && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+    cam->jump = true;
+    cam->jumpstart = currentTime;
+    cam->jumpspeed = 3.0f;
   }
 
   if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+    cam->pos += deltaSpeed * cam->front;
+    cam->pos.y = cam->height;
+  }
+
+  if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+    cam->pos -= deltaSpeed * cam->front;
+    cam->pos.y = cam->height;
+  }
+
+  if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+    cam->pos -= glm::normalize(glm::cross(cam->front, cam->up)) * deltaSpeed;
+    cam->pos.y = cam->height;
+  }
+
+  if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+    cam->pos += glm::normalize(glm::cross(cam->front, cam->up)) * deltaSpeed;
+    cam->pos.y = cam->height;
+  }
+
+  if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
     *textureSwap += 0.01;
     std::cout << "textureSwap up: " << *textureSwap << std::endl;
-  } else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+  } else if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
     *textureSwap -= 0.01;
     std::cout << "textureSwap down: " << *textureSwap << std::endl;
   }
@@ -63,6 +115,11 @@ void setupCam(Camera* cam)
   cam->front = glm::vec3(0.0f, 0.0f, -1.0f);
   cam->up = glm::vec3(0.0f, 1.0f,  0.0f);
   cam->speed = 2.5f;
+  cam->height = 0;
+  cam->jump = false;
+  cam->jumpstart = 0.0f;
+  cam->jumpspeed = 0.0f;
+  cam->fall = 3.6f;
 }
 
 int main(int argc, char** argv)
@@ -71,6 +128,7 @@ int main(int argc, char** argv)
   const int WINDOW_HEIGHT = 720;
   GLFWwindow* window;
   float textureSwap = 0.2;
+  int texSelect = 0;
   Camera cam;
   setupCam(&cam);
   float deltaTime = 0.0f; // Time between current frame and last frame
@@ -106,6 +164,8 @@ int main(int argc, char** argv)
   }
 
   glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+  glfwSetCursorPosCallback(window, mouse_callback);
+  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
   glEnable(GL_DEPTH_TEST);
 
   /* texture loading */
@@ -150,6 +210,47 @@ int main(int argc, char** argv)
   }
 
   stbi_image_free(data2);
+
+  int width3, height3, nrChannels3;
+  unsigned int texture3;
+  glGenTextures(1, &texture3);
+  glActiveTexture(GL_TEXTURE2);
+  glBindTexture(GL_TEXTURE_2D, texture3);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  unsigned char *data3 = stbi_load("images/altdev/generic-02.png", &width3, &height3, &nrChannels3, 0);
+
+  if (data3) {
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width3, height3, 0, GL_RGBA, GL_UNSIGNED_BYTE, data3);
+    glGenerateMipmap(GL_TEXTURE_2D);
+  } else {
+    std::cout << "Failed to load texture" << std::endl;
+  }
+
+  stbi_image_free(data3);
+
+  int width4, height4, nrChannels4;
+  unsigned int texture4;
+  glGenTextures(1, &texture4);
+  glActiveTexture(GL_TEXTURE3);
+  glBindTexture(GL_TEXTURE_2D, texture4);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  unsigned char *data4 = stbi_load("images/altdev/generic-12.png", &width4, &height4, &nrChannels4, 0);
+
+  if (data4) {
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width4, height4, 0, GL_RGBA, GL_UNSIGNED_BYTE, data4);
+    glGenerateMipmap(GL_TEXTURE_2D);
+  } else {
+    std::cout << "Failed to load texture" << std::endl;
+  }
+
+  stbi_image_free(data4);
+
 
   /* end texture loading */
 
@@ -199,6 +300,16 @@ int main(int argc, char** argv)
     -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
     -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
   };
+
+  float vertices_plane[] = {
+    0.0f, 0.0f, 0.0f,      0.0f, 0.0f,
+    100.0f, 0.0f, 0.0f,    100.0f, 0.0f,
+    100.0f, 0.0f, 100.0f,  100.0f, 100.0f,
+    0.0f, 0.0f, 0.0f,      0.0f, 0.0f,
+    0.0f, 0.0f, 100.0f,    0.0f, 100.0f,
+    100.0f, 0.0f, 100.0f,  100.0f, 100.0f,
+  };
+
   //unsigned int indices[] = {  // note that we start from 0!
   //  0, 1, 3,   // first triangle
   //  1, 2, 3    // second triangle
@@ -233,13 +344,48 @@ int main(int argc, char** argv)
   glEnableVertexAttribArray(2);
   /* end setting up attribute arrays */
 
+  /* plane */
+
+  unsigned int VAO_plane;
+  glGenVertexArrays(2, &VAO_plane);
+  unsigned int VBO_plane;
+  glGenBuffers(2, &VBO_plane);
+  //unsigned int EBO;
+  //glGenBuffers(1, &EBO);
+
+  // bind the vertex array
+  glBindVertexArray(VAO_plane);
+
+  // bind the array buffer
+  glBindBuffer(GL_ARRAY_BUFFER, VBO_plane);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices_plane), vertices_plane, GL_STATIC_DRAW);
+
+  // bind the element buffer
+  //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+  //glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+  /* end declare vertices */
+
+  /* set up attribute arrays */
+  // vertex attributes
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+  glEnableVertexAttribArray(0);
+  // texture attributes
+  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+  glEnableVertexAttribArray(2);
+
+  /* end plane */
+
   // un-comment to use wireframe mode:
   // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
   // set up textures in shader:
   ourShader.use(); // don't forget to activate the shader before setting uniforms!
-  glUniform1i(glGetUniformLocation(ourShader.ID, "texture1"), 0); // set it manually
+  texSelect = 0;
+  ourShader.setInt("texSelect", texSelect); // use blended texture by default
+  ourShader.setInt("texture1", 0); // or with shader class
   ourShader.setInt("texture2", 1); // or with shader class
+  ourShader.setInt("texture3", 2); // or with shader class
+  ourShader.setInt("texture4", 3); // or with shader class
 
   glm::vec3 cubePositions[] = {
     glm::vec3(0.0f,  0.0f,  0.0f),
@@ -251,7 +397,18 @@ int main(int argc, char** argv)
     glm::vec3(1.3f, -2.0f, -2.5f),
     glm::vec3(1.5f,  2.0f, -2.5f),
     glm::vec3(1.5f,  0.2f, -1.5f),
-    glm::vec3(-1.3f,  1.0f, -1.5f)
+    glm::vec3(-1.3f,  1.0f, -1.5f),
+
+    glm::vec3(-5.0f,  0.0f, -5.0f),
+    glm::vec3(-5.0f,  0.0f, -4.0f),
+    glm::vec3(-5.0f,  0.0f, -3.0f),
+    glm::vec3(-5.0f,  0.0f, -2.0f),
+    glm::vec3(-5.0f,  0.0f, -1.0f),
+    glm::vec3(-5.0f,  0.0f, 0.0f),
+    glm::vec3(-5.0f,  0.0f, 1.0f),
+    glm::vec3(-5.0f,  0.0f, 2.0f),
+    glm::vec3(-5.0f,  0.0f, 3.0f),
+    glm::vec3(-5.0f,  0.0f, 4.0f),
   };
 
   /* Loop until the user closes the window */
@@ -260,7 +417,29 @@ int main(int argc, char** argv)
     deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;
 
-    processInput(window, &cam, &textureSwap, deltaTime);
+    float currentTime = glfwGetTime();
+
+    if (cam.jump == true) {
+      float jumpstartdelta = currentTime - cam.jumpstart;
+
+      if (jumpstartdelta < 2) {
+        cam.height += cam.jumpspeed * deltaTime;
+        cam.jumpspeed -= cam.fall * deltaTime;
+      } else {
+        cam.jump = false;
+        cam.jumpstart = 0;
+      }
+    } else if (cam.height > 0.0f && cam.jump != true) {
+      cam.height -= cam.fall * deltaTime;
+    }
+
+    if (cam.height < 0.0f) {
+      cam.height = 0.0f;
+    }
+
+    cam.pos.y = cam.height;
+
+    processInput(window, &cam, &textureSwap, deltaTime, currentTime);
 
     /* Render here */
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -270,6 +449,11 @@ int main(int argc, char** argv)
     model = glm::rotate(model, (float)glfwGetTime() * glm::radians(50.0f), glm::vec3(0.5f, 1.0f, 0.0f));
 
     glm::mat4 view = glm::mat4(1.0f);
+    glm::vec3 direction;
+    direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    direction.y = sin(glm::radians(pitch));
+    direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    cam.front = glm::normalize(direction);
     view = glm::lookAt(cam.pos, cam.pos + cam.front, cam.up);
 
     glm::mat4 projection;
@@ -289,13 +473,19 @@ int main(int argc, char** argv)
     glBindTexture(GL_TEXTURE_2D, texture1);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, texture2);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, texture3);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, texture4);
     glBindVertexArray(VAO);
     //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
-    glBindVertexArray(VAO);
+    texSelect = 0;
+    ourShader.setInt("texSelect", texSelect); // use blended texture by default
 
     for (unsigned int i = 0; i < 10; i++) {
       glm::mat4 model = glm::mat4(1.0f);
+
       model = glm::translate(model, cubePositions[i]);
       float angle = 20.0f * i;
 
@@ -305,15 +495,44 @@ int main(int argc, char** argv)
         model = glm::rotate(model, (float)glfwGetTime() * glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
       } else if (i % 2 == 0) {
         model = glm::rotate(model, (float)glfwGetTime() * glm::radians(angle), glm::vec3(0.3f, 0.1f, 0.5f));
-      } else {
+      } else if (i <= 10) {
         model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
       }
 
-      unsigned int modelLoc = glGetUniformLocation(ourShader.ID, "model");
       glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-
       glDrawArrays(GL_TRIANGLES, 0, 36);
     }
+
+    texSelect = 3;
+    ourShader.setInt("texSelect", texSelect); // use other texture
+
+    for (unsigned int i = 0; i < 50; i++) {
+      for (unsigned int j = 0; j < 50; j++) {
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(-25.0f, 0.0f, -25.0f));
+        model = glm::translate(model, glm::vec3((float)i, 0.0f, (float)j));
+
+        if (i == 0 || j == 0 || i == 49 - 1 || j == 49 - 1) {
+          glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+          glDrawArrays(GL_TRIANGLES, 0, 36);
+          model = glm::translate(model, glm::vec3(0.0f, 1.0f, 0.0f));
+
+          if (((i == 0 || i == 49 - 1) && j % 2 == 0) || ((j == 0 || j == 49 - 1) && i % 2 == 0)) {
+            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+          }
+        }
+      }
+    }
+
+    texSelect = 4;
+    ourShader.setInt("texSelect", texSelect); // use other texture
+    model = glm::mat4(1.0f);
+    model = glm::translate(model, glm::vec3(-50.0f, -0.5f, -50.0f));
+    model = glm::rotate(model, glm::radians(0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    glBindVertexArray(VAO_plane);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
 
     /* Swap front and back buffers */
     glfwSwapBuffers(window);
