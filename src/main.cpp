@@ -402,6 +402,7 @@ int main(int argc, char** argv)
   // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
   // set up textures in shader:
+  lightCubeShader.use();
   lightingShader.use(); // don't forget to activate the shader before setting uniforms!
   texSelect = 0;
   lightingShader.setInt("texSelect", texSelect); // use blended texture by default
@@ -498,6 +499,23 @@ int main(int argc, char** argv)
     lightingShader.setVec3f("lightPos", lightPos.x, lightPos.y, lightPos.z);
     lightingShader.setVec3f("viewPos", cam.pos.x, cam.pos.y, cam.pos.z);
 
+    lightingShader.setVec3f("material.ambient", 1.0f, 0.5f, 0.31f);
+    lightingShader.setVec3f("material.diffuse", 1.0f, 0.5f, 0.31f);
+    lightingShader.setVec3f("material.specular", 0.2f, 0.2f, 0.2f);
+    lightingShader.setFloat("material.shininess", 8.0f);
+
+    glm::vec3 lightColor;
+    lightColor.x = sin(glfwGetTime() * 2.0f);
+    lightColor.y = sin(glfwGetTime() * 0.7f);
+    lightColor.z = sin(glfwGetTime() * 1.3f);
+
+    glm::vec3 diffuseColor = lightColor   * glm::vec3(0.5f);
+    glm::vec3 ambientColor = diffuseColor * glm::vec3(0.2f);
+
+    lightingShader.setVec3f("light.ambient",  ambientColor.r, ambientColor.g, ambientColor.b);
+    lightingShader.setVec3f("light.diffuse",  diffuseColor.r, diffuseColor.g, diffuseColor.b); // darken diffuse light a bit
+    lightingShader.setVec3f("light.specular", 1.0f, 1.0f, 1.0f);
+
     /* draw the darn triangles, using the vertex array element array buffer */
     glActiveTexture(GL_TEXTURE0); // activate the texture unit first before binding texture
     glBindTexture(GL_TEXTURE_2D, texture1);
@@ -567,6 +585,7 @@ int main(int argc, char** argv)
     model = glm::translate(model, lightPos);
     model = glm::scale(model, glm::vec3(0.2f));
     lightCubeShader.use();
+    lightCubeShader.setVec3f("light.specular", lightColor.r, lightColor.g, lightColor.b);
     unsigned int lightCubeModelLoc = glGetUniformLocation(lightCubeShader.ID, "model");
     unsigned int lightCubeViewLoc = glGetUniformLocation(lightCubeShader.ID, "view");
     unsigned int lightCubeProjLoc = glGetUniformLocation(lightCubeShader.ID, "projection");
