@@ -496,6 +496,7 @@ int main(int argc, char** argv)
     lightPos.x = 5 * sin(glfwGetTime() * 5.0f / 8.0f);
     lightPos.z = 5 * cos(glfwGetTime() * 5.0f / 8.0f);
     lightingShader.setVec3f("lightPos", lightPos.x, lightPos.y, lightPos.z);
+    lightingShader.setVec3f("viewPos", cam.pos.x, cam.pos.y, cam.pos.z);
 
     /* draw the darn triangles, using the vertex array element array buffer */
     glActiveTexture(GL_TEXTURE0); // activate the texture unit first before binding texture
