@@ -133,6 +133,7 @@ int main(int argc, char** argv)
   setupCam(&cam);
   float deltaTime = 0.0f; // Time between current frame and last frame
   float lastFrame = 0.0f; // Time of last frame
+  glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
 
   /* Initialize the library */
   if (!glfwInit()) {
@@ -254,7 +255,8 @@ int main(int argc, char** argv)
 
   /* end texture loading */
 
-  Shader ourShader("shaders/shader.vs", "shaders/shader.fs");
+  Shader lightingShader("shaders/lighting_shader.vs", "shaders/lighting_shader.fs");
+  Shader lightCubeShader("shaders/light_cube_shader.vs", "shaders/light_cube_shader.fs");
 
   /* declare vertices */
   float vertices[] = {
@@ -373,19 +375,36 @@ int main(int argc, char** argv)
   glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
   glEnableVertexAttribArray(1);
 
+  unsigned int lightCubeVAO;
+  glGenVertexArrays(1, &lightCubeVAO);
+  glBindVertexArray(lightCubeVAO);
+  // we only need to bind to the VBO, the original container's VBO's data already contains the data we need.
+  glBindBuffer(GL_ARRAY_BUFFER, VBO);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+  // set the vertex attribute
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+  glEnableVertexAttribArray(0);
+  // texture attributes
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+  glEnableVertexAttribArray(1);
+
   /* end plane */
 
   // un-comment to use wireframe mode:
   // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
   // set up textures in shader:
-  ourShader.use(); // don't forget to activate the shader before setting uniforms!
+  lightingShader.use(); // don't forget to activate the shader before setting uniforms!
   texSelect = 0;
-  ourShader.setInt("texSelect", texSelect); // use blended texture by default
-  ourShader.setInt("texture1", 0); // or with shader class
-  ourShader.setInt("texture2", 1); // or with shader class
-  ourShader.setInt("texture3", 2); // or with shader class
-  ourShader.setInt("texture4", 3); // or with shader class
+  lightingShader.setInt("texSelect", texSelect); // use blended texture by default
+  lightingShader.setInt("texture1", 0); // or with shader class
+  lightingShader.setInt("texture2", 1); // or with shader class
+  lightingShader.setInt("texture3", 2); // or with shader class
+  lightingShader.setInt("texture4", 3); // or with shader class
+
+  // set up lighting
+  lightingShader.setVec3f("objectColor", 1.0f, 0.5f, 0.31f);
+  lightingShader.setVec3f("lightColor",  1.0f, 1.0f, 1.0f);
 
   glm::vec3 cubePositions[] = {
     glm::vec3(0.0f,  0.0f,  0.0f),
@@ -459,14 +478,14 @@ int main(int argc, char** argv)
     glm::mat4 projection;
     projection = glm::perspective(glm::radians(45.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
 
-    ourShader.use();
-    unsigned int modelLoc = glGetUniformLocation(ourShader.ID, "model");
-    unsigned int viewLoc = glGetUniformLocation(ourShader.ID, "view");
-    unsigned int projLoc = glGetUniformLocation(ourShader.ID, "projection");
+    lightingShader.use();
+    unsigned int modelLoc = glGetUniformLocation(lightingShader.ID, "model");
+    unsigned int viewLoc = glGetUniformLocation(lightingShader.ID, "view");
+    unsigned int projLoc = glGetUniformLocation(lightingShader.ID, "projection");
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
-    ourShader.setFloat("textureSwap", textureSwap);
+    lightingShader.setFloat("textureSwap", textureSwap);
 
     /* draw the darn triangles, using the vertex array element array buffer */
     glActiveTexture(GL_TEXTURE0); // activate the texture unit first before binding texture
@@ -481,7 +500,7 @@ int main(int argc, char** argv)
     //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
     texSelect = 0;
-    ourShader.setInt("texSelect", texSelect); // use blended texture by default
+    lightingShader.setInt("texSelect", texSelect); // use blended texture by default
 
     for (unsigned int i = 0; i < 10; i++) {
       glm::mat4 model = glm::mat4(1.0f);
@@ -504,7 +523,7 @@ int main(int argc, char** argv)
     }
 
     texSelect = 3;
-    ourShader.setInt("texSelect", texSelect); // use other texture
+    lightingShader.setInt("texSelect", texSelect); // use other texture
 
     for (unsigned int i = 0; i < 50; i++) {
       for (unsigned int j = 0; j < 50; j++) {
@@ -526,13 +545,27 @@ int main(int argc, char** argv)
     }
 
     texSelect = 4;
-    ourShader.setInt("texSelect", texSelect); // use other texture
+    lightingShader.setInt("texSelect", texSelect); // use other texture
     model = glm::mat4(1.0f);
     model = glm::translate(model, glm::vec3(-50.0f, -0.5f, -50.0f));
     model = glm::rotate(model, glm::radians(0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     glBindVertexArray(VAO_plane);
     glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    model = glm::mat4(1.0f);
+    model = glm::translate(model, lightPos);
+    model = glm::scale(model, glm::vec3(0.2f));
+    lightCubeShader.use();
+    unsigned int lightCubeModelLoc = glGetUniformLocation(lightCubeShader.ID, "model");
+    unsigned int lightCubeViewLoc = glGetUniformLocation(lightCubeShader.ID, "view");
+    unsigned int lightCubeProjLoc = glGetUniformLocation(lightCubeShader.ID, "projection");
+
+    glUniformMatrix4fv(lightCubeModelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix4fv(lightCubeViewLoc, 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(lightCubeProjLoc, 1, GL_FALSE, glm::value_ptr(projection));
+    glBindVertexArray(lightCubeVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
 
     /* Swap front and back buffers */
     glfwSwapBuffers(window);
