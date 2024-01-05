@@ -309,9 +309,9 @@ int main(int argc, char** argv)
   /* plane */
 
   unsigned int VAO_plane;
-  glGenVertexArrays(2, &VAO_plane);
+  glGenVertexArrays(1, &VAO_plane);
   unsigned int VBO_plane;
-  glGenBuffers(2, &VBO_plane);
+  glGenBuffers(1, &VBO_plane);
   //unsigned int EBO;
   //glGenBuffers(1, &EBO);
 
