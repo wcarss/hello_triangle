@@ -155,6 +155,41 @@ unsigned int loadTexture(uint tex_number, const char *path)
   return texture;
 }
 
+int loadObject(float *vertices, unsigned int array_size)
+{
+  unsigned int VAO;
+  glGenVertexArrays(1, &VAO);
+  unsigned int VBO;
+  glGenBuffers(1, &VBO);
+  //unsigned int EBO;
+  //glGenBuffers(1, &EBO);
+
+  // bind the vertex array
+  glBindVertexArray(VAO);
+
+  // bind the array buffer
+  glBindBuffer(GL_ARRAY_BUFFER, VBO);
+  glBufferData(GL_ARRAY_BUFFER, array_size, vertices, GL_STATIC_DRAW);
+
+  // bind the element buffer
+  //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+  //glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+  /* end declare vertices */
+
+  /* set up attribute arrays */
+  // vertex attributes
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+  glEnableVertexAttribArray(0);
+  // normals
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+  glEnableVertexAttribArray(1);
+  // texture attributes
+  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+  glEnableVertexAttribArray(2);
+
+  return VAO;
+}
+
 int main(int argc, char** argv)
 {
   const int WINDOW_WIDTH = 1280;
@@ -216,7 +251,7 @@ int main(int argc, char** argv)
   Shader lightCubeShader("shaders/light_cube_shader.vs", "shaders/light_cube_shader.fs");
 
   /* declare vertices */
-  float vertices[] = {
+  float vertices_cube[] = {
     -0.5f, -0.5f, -0.5f,   0.0f, 0.0f, -1.0f,   0.0f, 0.0f,
     0.5f,  -0.5f, -0.5f,   0.0f, 0.0f, -1.0f,   1.0f, 0.0f,
     0.5f,   0.5f, -0.5f,   0.0f, 0.0f, -1.0f,   1.0f, 1.0f,
@@ -268,93 +303,14 @@ int main(int argc, char** argv)
     0.0f,   0.0f, 100.0f,  0.0f, 1.0f, 0.0f,    0.0f, 100.0f,
     100.0f, 0.0f, 100.0f,  0.0f, 1.0f, 0.0f,    100.0f, 100.0f,
   };
-
   //unsigned int indices[] = {  // note that we start from 0!
   //  0, 1, 3,   // first triangle
   //  1, 2, 3    // second triangle
   //};
 
-  // declare and generate the vertex array, vertex buffer, and element index buffer
-  unsigned int VAO;
-  glGenVertexArrays(1, &VAO);
-  unsigned int VBO;
-  glGenBuffers(1, &VBO);
-  //unsigned int EBO;
-  //glGenBuffers(1, &EBO);
-
-  // bind the vertex array
-  glBindVertexArray(VAO);
-
-  // bind the array buffer
-  glBindBuffer(GL_ARRAY_BUFFER, VBO);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-  // bind the element buffer
-  //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-  //glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-  /* end declare vertices */
-
-  /* set up attribute arrays */
-  // vertex attributes
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-  glEnableVertexAttribArray(0);
-  // normals
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-  glEnableVertexAttribArray(1);
-  // texture attributes
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-  glEnableVertexAttribArray(2);
-  /* end setting up attribute arrays */
-
-  /* plane */
-
-  unsigned int VAO_plane;
-  glGenVertexArrays(1, &VAO_plane);
-  unsigned int VBO_plane;
-  glGenBuffers(1, &VBO_plane);
-  //unsigned int EBO;
-  //glGenBuffers(1, &EBO);
-
-  // bind the vertex array
-  glBindVertexArray(VAO_plane);
-
-  // bind the array buffer
-  glBindBuffer(GL_ARRAY_BUFFER, VBO_plane);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices_plane), vertices_plane, GL_STATIC_DRAW);
-
-  // bind the element buffer
-  //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-  //glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-  /* end declare vertices */
-
-  /* set up attribute arrays */
-  // vertex attributes
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-  glEnableVertexAttribArray(0);
-  // normals
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-  glEnableVertexAttribArray(1);
-  // texture attributes
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-  glEnableVertexAttribArray(2);
-
-  unsigned int lightCubeVAO;
-  glGenVertexArrays(1, &lightCubeVAO);
-  glBindVertexArray(lightCubeVAO);
-  // we only need to bind to the VBO, the original container's VBO's data already contains the data we need.
-  glBindBuffer(GL_ARRAY_BUFFER, VBO);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-  // set the vertex attribute
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-  glEnableVertexAttribArray(0);
-  // normals
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-  glEnableVertexAttribArray(1);
-  // texture attributes
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-  glEnableVertexAttribArray(2);
-
-  /* end plane */
+  unsigned int VAO = loadObject(vertices_cube, sizeof(vertices_cube));
+  unsigned int VAO_plane = loadObject(vertices_plane, sizeof(vertices_plane));
+  unsigned int lightCubeVAO = loadObject(vertices_cube, sizeof(vertices_cube));
 
   // un-comment to use wireframe mode:
   // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
