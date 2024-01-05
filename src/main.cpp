@@ -359,11 +359,10 @@ int main(int argc, char** argv)
     deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;
 
-    float currentTime = glfwGetTime();
-
     if (cam.jump == true) {
-      float jumpstartdelta = currentTime - cam.jumpstart;
+      float jumpstartdelta = currentFrame - cam.jumpstart;
 
+      // jump runs for "2 seconds", or something.
       if (jumpstartdelta < 2) {
         cam.height += cam.jumpspeed * deltaTime;
         cam.jumpspeed -= cam.fall * deltaTime;
@@ -381,7 +380,7 @@ int main(int argc, char** argv)
 
     cam.pos.y = cam.height;
 
-    processInput(window, &cam, &textureSwap, deltaTime, currentTime);
+    processInput(window, &cam, &textureSwap, deltaTime, currentFrame);
 
     /* Render here */
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
