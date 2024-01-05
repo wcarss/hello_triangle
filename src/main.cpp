@@ -402,7 +402,6 @@ int main(int argc, char** argv)
   // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
   // set up textures in shader:
-  lightCubeShader.use();
   lightingShader.use(); // don't forget to activate the shader before setting uniforms!
   texSelect = 0;
   lightingShader.setInt("texSelect", texSelect); // use blended texture by default
@@ -500,17 +499,17 @@ int main(int argc, char** argv)
     lightingShader.setVec3f("viewPos", cam.pos.x, cam.pos.y, cam.pos.z);
 
     lightingShader.setVec3f("material.ambient", 1.0f, 0.5f, 0.31f);
-    lightingShader.setVec3f("material.diffuse", 1.0f, 0.5f, 0.31f);
+    lightingShader.setInt("material.diffuse", 0);
     lightingShader.setVec3f("material.specular", 0.2f, 0.2f, 0.2f);
     lightingShader.setFloat("material.shininess", 8.0f);
 
     glm::vec3 lightColor;
-    lightColor.x = sin(glfwGetTime() * 2.0f);
-    lightColor.y = sin(glfwGetTime() * 0.7f);
-    lightColor.z = sin(glfwGetTime() * 1.3f);
+    lightColor.x = abs(sin(glfwGetTime() * 2.0f));
+    lightColor.y = abs(sin(glfwGetTime() * 0.7f));
+    lightColor.z = abs(sin(glfwGetTime() * 1.3f));
 
     glm::vec3 diffuseColor = lightColor   * glm::vec3(0.5f);
-    glm::vec3 ambientColor = diffuseColor * glm::vec3(0.2f);
+    glm::vec3 ambientColor = lightColor * glm::vec3(0.2f);
 
     lightingShader.setVec3f("light.ambient",  ambientColor.r, ambientColor.g, ambientColor.b);
     lightingShader.setVec3f("light.diffuse",  diffuseColor.r, diffuseColor.g, diffuseColor.b); // darken diffuse light a bit
@@ -529,6 +528,7 @@ int main(int argc, char** argv)
     //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
     texSelect = 0;
+    lightingShader.setInt("material.diffuse", 1);
     lightingShader.setInt("texSelect", texSelect); // use blended texture by default
 
     for (unsigned int i = 0; i < 10; i++) {
@@ -552,6 +552,7 @@ int main(int argc, char** argv)
     }
 
     texSelect = 3;
+    lightingShader.setInt("material.diffuse", texSelect);
     lightingShader.setInt("texSelect", texSelect); // use other texture
 
     for (unsigned int i = 0; i < 50; i++) {
@@ -574,6 +575,7 @@ int main(int argc, char** argv)
     }
 
     texSelect = 4;
+    lightingShader.setInt("material.diffuse", texSelect);
     lightingShader.setInt("texSelect", texSelect); // use other texture
     model = glm::mat4(1.0f);
     model = glm::translate(model, glm::vec3(-50.0f, -0.5f, -50.0f));
