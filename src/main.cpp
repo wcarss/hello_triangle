@@ -8,6 +8,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#define MAX_NUM_OF_LIGHTS 100
 #define INFOLOG_LENGTH 512
 #define BUFFER_OFFSET(i) ((char *)NULL + (i))
 
@@ -33,7 +34,26 @@ typedef struct {
   bool canJump;
   float pitch;
   float yaw;
+  float lightsUsedControl;
 } Camera;
+
+typedef struct {
+  glm::vec3 specular;
+  glm::vec3 diffuse;
+  glm::vec3 ambient;
+  glm::vec3 pos;
+  float height;
+  float constant;
+  float linear;
+  float quadratic;
+} PointLight;
+
+typedef struct {
+  glm::vec3 specular;
+  glm::vec3 diffuse;
+  glm::vec3 ambient;
+  glm::vec3 dir;
+} DirLight;
 
 typedef struct {
   Camera* cam;
@@ -62,6 +82,7 @@ void setupCam(Camera* cam)
   cam->canJump = true;
   cam->pitch = 0.0f;
   cam->yaw = -90.0f;
+  cam->lightsUsedControl = 1.0f;
 }
 
 void processCamera(Camera* cam, float deltaTime, float currentFrame)
@@ -150,6 +171,81 @@ void changeCameraAngles(Camera *cam, float xoffset, float yoffset)
   }
 }
 
+void sendPointLightColors(Shader* shader, PointLight * lights, int numOfLights)
+{
+  char fieldName[32] = "pointLights";
+  char formattedSpecifier[32];
+
+  for (int i = 0; i < numOfLights; i++) {
+    snprintf(formattedSpecifier, 32, "%s[%d].%s", fieldName, i, "ambient");
+    shader->setVec3f(formattedSpecifier, lights[i].ambient.r, lights[i].ambient.g, lights[i].ambient.b);
+    snprintf(formattedSpecifier, 32, "%s[%d].%s", fieldName, i, "diffuse");
+    shader->setVec3f(formattedSpecifier, lights[i].diffuse.r, lights[i].diffuse.g, lights[i].diffuse.b);
+    snprintf(formattedSpecifier, 32, "%s[%d].%s", fieldName, i, "specular");
+    shader->setVec3f(formattedSpecifier, lights[i].specular.r, lights[i].specular.g, lights[i].specular.b);
+  }
+}
+
+void sendPointLightPositions(Shader* shader, PointLight * lights, int numOfLights)
+{
+  char fieldName[32] = "pointLights";
+  char formattedSpecifier[32];
+
+  for (int i = 0; i < numOfLights; i++) {
+    snprintf(formattedSpecifier, 32, "%s[%d].%s", fieldName, i, "pos");
+    shader->setVec3f(formattedSpecifier, lights[i].pos.x, lights[i].pos.y, lights[i].pos.z);
+  }
+}
+
+void sendPointLightAttenuations(Shader* shader, PointLight * lights, int numOfLights)
+{
+  char fieldName[32] = "pointLights";
+  char formattedSpecifier[32];
+
+  for (int i = 0; i < numOfLights; i++) {
+    snprintf(formattedSpecifier, 32, "%s[%d].%s", fieldName, i, "linear");
+    shader->setFloat(formattedSpecifier, lights[i].linear);
+    snprintf(formattedSpecifier, 32, "%s[%d].%s", fieldName, i, "constant");
+    shader->setFloat(formattedSpecifier, lights[i].constant);
+    snprintf(formattedSpecifier, 32, "%s[%d].%s", fieldName, i, "quadratic");
+    shader->setFloat(formattedSpecifier, lights[i].quadratic);
+  }
+}
+
+void setupPointLightDefaults(PointLight *light)
+{
+  light->pos = glm::vec3(0.7f,  0.2f,  2.0f);
+  light->height = light->pos.y;
+  light->specular = glm::vec3(1.0f);
+  light->diffuse = light->specular * 0.65f;
+  light->ambient = light->specular * 0.3f;
+  light->constant = 1.0f;
+  light->linear = 0.15f;
+  light->quadratic = 0.032f;
+}
+
+void updatePointLightColor(PointLight *light, glm::vec3 color)
+{
+  light->specular = color;
+  light->diffuse = light->specular * 0.65f;
+  light->ambient = light->specular * 0.3f;
+}
+
+void updateDirLightColor(PointLight *light, glm::vec3 color)
+{
+  light->specular = color;
+  light->diffuse = light->specular * 0.65f;
+  light->ambient = light->specular * 0.3f;
+}
+
+void setupDirLightDefaults(DirLight *light)
+{
+  light->dir = glm::vec3(0.7f,  0.2f,  2.0f);
+  light->specular = glm::vec3(1.0f);
+  light->diffuse = light->specular * 0.65f;
+  light->ambient = light->specular * 0.3f;
+}
+
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
   printf("famebuffer_size changed: %d, %d\n", width, height);
@@ -207,6 +303,22 @@ void processInput(GLFWwindow *window, Camera* cam)
 
   if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
     cam->rightPressed = true;
+  }
+
+  if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
+    cam->lightsUsedControl += 0.5f;
+
+    if (cam->lightsUsedControl > MAX_NUM_OF_LIGHTS) {
+      cam->lightsUsedControl = MAX_NUM_OF_LIGHTS;
+    }
+  }
+
+  if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
+    cam->lightsUsedControl -= 0.5f;
+
+    if (cam->lightsUsedControl < 0) {
+      cam->lightsUsedControl = 0;
+    }
   }
 }
 
@@ -290,7 +402,35 @@ int main(int argc, char** argv)
   game.cam = &cam;
   float deltaTime = 0.0f; // Time between current frame and last frame
   float lastFrame = 0.0f; // Time of last frame
-  glm::vec3 lightPos(0.2f, 1.0f, 2.0f);
+  //glm::vec3 lightPos(0.2f, 1.0f, 2.0f);
+  PointLight pointLights[MAX_NUM_OF_LIGHTS];
+  DirLight dirLight;
+  glm::vec3 pointLightPositions[] = {
+    glm::vec3(0.7f,  0.2f,  2.0f),
+    glm::vec3(2.3f, 3.3f, -4.0f),
+    glm::vec3(-3.0f, 0.8f, -6.0f),
+    glm::vec3(0.0f,  1.0f, -3.0f),
+    glm::vec3(1.0f,  2.0f, -2.0f),
+    glm::vec3(1.5f,  7.0f, -3.0f),
+    glm::vec3(5.0f,  0.0f, -5.0f),
+    glm::vec3(0.8f,  0.3f, -2.0f),
+    glm::vec3(3.5f,  6.0f, -3.0f),
+    glm::vec3(0.5f,  8.0f, -3.0f)
+  };
+
+  for (int i = 0; i < MAX_NUM_OF_LIGHTS; i++) {
+    setupPointLightDefaults(&pointLights[i]);
+
+    if (i < 10) {
+      pointLights[i].pos = pointLightPositions[i];
+    } else {
+      pointLights[i].pos = glm::vec3((i % 11) * 0.3f, (i % 13) * 0.3f, (i % 17) * 0.6f);
+    }
+
+    pointLights[i].height = pointLights[i].pos.y;
+  }
+
+  setupDirLightDefaults(&dirLight);
 
   /* Initialize the library */
   if (!glfwInit()) {
@@ -412,14 +552,11 @@ int main(int argc, char** argv)
 
   // set up textures in shader:
   lightingShader.use(); // don't forget to activate the shader before setting uniforms!
-  lightingShader.setVec3f("light.position", lightPos.x, lightPos.y, lightPos.z);
 
   // set up lighting
   lightingShader.setVec3f("objectColor", 1.0f, 0.5f, 0.31f);
   lightingShader.setVec3f("lightColor",  1.0f, 1.0f, 1.0f);
-  lightingShader.setFloat("light.constant",  1.0f);
-  lightingShader.setFloat("light.linear",    0.09f);
-  lightingShader.setFloat("light.quadratic", 0.016f);
+  sendPointLightAttenuations(&lightingShader, pointLights, MAX_NUM_OF_LIGHTS);
 
   glm::vec3 cubePositions[] = {
     glm::vec3(0.0f,  0.0f,  0.0f),
@@ -434,6 +571,10 @@ int main(int argc, char** argv)
     glm::vec3(-1.3f,  1.0f, -1.5f),
   };
 
+  lightingShader.setVec3f("dir.direction", -0.2f, -1.0f, -0.3f);
+  lightingShader.setVec3f("dir.diffuse", 0.4f, 0.13f, 0.13f);
+  lightingShader.setVec3f("dir.ambient", 0.4f * 0.3f, 0.13f * 0.3f, 0.13f * 0.3f);
+
   /* Loop until the user closes the window */
   while (!glfwWindowShouldClose(window)) {
     float currentFrame = glfwGetTime();
@@ -442,6 +583,9 @@ int main(int argc, char** argv)
 
     processInput(window, &cam);
     processCamera(&cam, deltaTime, currentFrame);
+    lightingShader.use();
+    int lightsUsed = (int)floor(cam.lightsUsedControl);
+    lightingShader.setInt("lightsUsed", lightsUsed);
 
     /* Render here */
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -451,40 +595,36 @@ int main(int argc, char** argv)
     glm::mat4 view = glm::lookAt(cam.pos, cam.pos + cam.front, cam.up);
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
 
-    lightingShader.use();
+
     unsigned int modelLoc = glGetUniformLocation(lightingShader.ID, "model");
     unsigned int viewLoc = glGetUniformLocation(lightingShader.ID, "view");
     unsigned int projLoc = glGetUniformLocation(lightingShader.ID, "projection");
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
-
-    // revolving light
-    lightPos.x = 5 * sin(glfwGetTime() * 5.0f / 8.0f);
-    lightPos.z = 5 * cos(glfwGetTime() * 5.0f / 8.0f);
-    lightingShader.setVec3f("light.position", lightPos.x, lightPos.y, lightPos.z);
     lightingShader.setVec3f("viewPos", cam.pos.x, cam.pos.y, cam.pos.z);
-    //lightingShader.setVec3f("light.direction", -0.2f, -1.0f, -0.3f);
 
-    lightingShader.setVec3f("material.ambient", 1.0f, 0.5f, 0.31f);
-    //lightingShader.setVec3f("material.specular", 0.2f, 0.2f, 0.2f);
-    lightingShader.setFloat("material.shininess", 32.0f);
+    // revolving lights
+    for (int i = 0; i < lightsUsed; i++) {
+      float distance = sqrt(pointLights[i].pos.x * pointLights[i].pos.x + pointLights[i].pos.z * pointLights[i].pos.z);
+      pointLights[i].pos.x = distance * sin(glfwGetTime() * (i % 11 + 1) / (2.0f + (i % 3) * 1.5));
+      pointLights[i].pos.y = pointLights[i].height + sin(glfwGetTime() * (i % 11 + 1) / 5.0f) * 1.3f;
+      pointLights[i].pos.z = distance * cos(glfwGetTime() * (i % 11 + 1) / (2.0f + (i % 3) * 1.5));
+      glm::vec3 lightColor;
+      lightColor.x = abs(sin(glfwGetTime() * (i % 7 + 1) * 0.15f));
+      lightColor.y = abs(sin(glfwGetTime() * (i % 11 + 1) * 0.17f));
+      lightColor.z = abs(sin(glfwGetTime() * (i % 9 + 1) * 0.13f));
+      updatePointLightColor(&pointLights[i], lightColor);
+    }
 
-    glm::vec3 lightColor;
-    lightColor.x = 0.2 + abs(sin(glfwGetTime() * 0.15f));
-    lightColor.y = 0.2 + abs(sin(glfwGetTime() * 0.17f));
-    lightColor.z = 0.2 + abs(sin(glfwGetTime() * 0.13f));
+    sendPointLightColors(&lightingShader, pointLights, lightsUsed);
+    sendPointLightPositions(&lightingShader, pointLights, lightsUsed);
 
-    glm::vec3 diffuseColor = lightColor * glm::vec3(0.65f);
-    glm::vec3 ambientColor = lightColor * glm::vec3(0.3f);
-
-    lightingShader.setVec3f("light.ambient",  ambientColor.r, ambientColor.g, ambientColor.b);
-    lightingShader.setVec3f("light.diffuse",  diffuseColor.r, diffuseColor.g, diffuseColor.b); // darken diffuse light a bit
-    lightingShader.setVec3f("light.specular", 1.0f, 1.0f, 1.0f);
-
-    /* draw the darn triangles, using the vertex array element array buffer */
+    /* begin to draw the actual triangles, using the vertex array buffer */
     glBindVertexArray(VAO);
 
+    lightingShader.setFloat("material.shininess", 16.0f);
+    lightingShader.setVec3f("material.ambient", 1.0f, 0.5f, 0.31f);
     lightingShader.setInt("material.emission", matrix);
     lightingShader.setInt("material.emission_map", container2_emission_map);
     lightingShader.setInt("material.diffuse", container2);
@@ -496,10 +636,11 @@ int main(int argc, char** argv)
       int awesomeface_index = 4;
 
       if (i == awesomeface_index) {
+        lightingShader.setFloat("material.shininess", 64.0f);
         lightingShader.setInt("material.diffuse", awesomeface);
         lightingShader.setInt("material.specular", blank);
-        lightingShader.setInt("material.emission", blank);
-        lightingShader.setInt("material.emission_map", blank);
+        lightingShader.setInt("material.emission", awesomeface);
+        lightingShader.setInt("material.emission_map", awesomeface);
         model = glm::rotate(model, (float)glfwGetTime() * glm::radians(angle), glm::vec3(1.0f, 1.0f, 0.5f));
       } else if (i % 3 == 0) {
         model = glm::rotate(model, (float)glfwGetTime() * glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
@@ -513,6 +654,7 @@ int main(int argc, char** argv)
       glDrawArrays(GL_TRIANGLES, 0, 36);
 
       if (i == awesomeface_index) {
+        lightingShader.setFloat("material.shininess", 16.0f);
         lightingShader.setInt("material.emission", matrix);
         lightingShader.setInt("material.diffuse", container2);
         lightingShader.setInt("material.specular", container2_specular);
@@ -550,19 +692,21 @@ int main(int argc, char** argv)
     glBindVertexArray(VAO_plane);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
-    model = glm::translate(glm::mat4(1.0f), lightPos);
-    model = glm::scale(model, glm::vec3(0.2f));
-    lightCubeShader.use();
-    lightCubeShader.setVec3f("light.specular", lightColor.r, lightColor.g, lightColor.b);
-    unsigned int lightCubeModelLoc = glGetUniformLocation(lightCubeShader.ID, "model");
-    unsigned int lightCubeViewLoc = glGetUniformLocation(lightCubeShader.ID, "view");
-    unsigned int lightCubeProjLoc = glGetUniformLocation(lightCubeShader.ID, "projection");
+    for (int i = 0; i < lightsUsed; i++) {
+      model = glm::translate(glm::mat4(1.0f), pointLights[i].pos);
+      model = glm::scale(model, glm::vec3(0.1f * (((i + 1) * 2) % 7)));
+      lightCubeShader.use();
+      lightCubeShader.setVec3f("light.specular", pointLights[i].specular.r, pointLights[i].specular.g, pointLights[i].specular.b);
+      unsigned int lightCubeModelLoc = glGetUniformLocation(lightCubeShader.ID, "model");
+      unsigned int lightCubeViewLoc = glGetUniformLocation(lightCubeShader.ID, "view");
+      unsigned int lightCubeProjLoc = glGetUniformLocation(lightCubeShader.ID, "projection");
 
-    glUniformMatrix4fv(lightCubeModelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    glUniformMatrix4fv(lightCubeViewLoc, 1, GL_FALSE, glm::value_ptr(view));
-    glUniformMatrix4fv(lightCubeProjLoc, 1, GL_FALSE, glm::value_ptr(projection));
-    glBindVertexArray(lightCubeVAO);
-    glDrawArrays(GL_TRIANGLES, 0, 36);
+      glUniformMatrix4fv(lightCubeModelLoc, 1, GL_FALSE, glm::value_ptr(model));
+      glUniformMatrix4fv(lightCubeViewLoc, 1, GL_FALSE, glm::value_ptr(view));
+      glUniformMatrix4fv(lightCubeProjLoc, 1, GL_FALSE, glm::value_ptr(projection));
+      glBindVertexArray(lightCubeVAO);
+      glDrawArrays(GL_TRIANGLES, 0, 36);
+    }
 
     /* Swap front and back buffers */
     glfwSwapBuffers(window);
