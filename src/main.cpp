@@ -331,10 +331,15 @@ int main(int argc, char** argv)
   /* texture loading */
   // flip images to a right-side-up view:
   stbi_set_flip_vertically_on_load(true);
-  unsigned int texture0 = loadTexture(0, "images/container.jpg");
-  unsigned int texture1 = loadTexture(1, "images/altdev/generic-02.png");
-  unsigned int texture2 = loadTexture(2, "images/altdev/generic-12.png");
-  unsigned int texture3 = loadTexture(3, "images/awesomeface.png");
+  unsigned int container = loadTexture(0, "images/container.jpg");
+  unsigned int container2 = loadTexture(1, "images/container2.png");
+  unsigned int container2_specular = loadTexture(2, "images/container2_specular.png");
+  unsigned int generic01 = loadTexture(3, "images/altdev/generic-02.png");
+  unsigned int generic02 = loadTexture(4, "images/altdev/generic-12.png");
+  unsigned int awesomeface = loadTexture(5, "images/awesomeface.png");
+  unsigned int matrix = loadTexture(6, "images/matrix.jpg");
+  unsigned int blank = loadTexture(7, "images/1x1.png");
+  unsigned int container2_emission_map = loadTexture(8, "images/container2_emission_map.png");
 
   /* end texture loading */
   Shader lightingShader("shaders/lighting_shader.vs", "shaders/lighting_shader.fs");
@@ -458,16 +463,16 @@ int main(int argc, char** argv)
     lightingShader.setVec3f("viewPos", cam.pos.x, cam.pos.y, cam.pos.z);
 
     lightingShader.setVec3f("material.ambient", 1.0f, 0.5f, 0.31f);
-    lightingShader.setVec3f("material.specular", 0.2f, 0.2f, 0.2f);
-    lightingShader.setFloat("material.shininess", 8.0f);
+    //lightingShader.setVec3f("material.specular", 0.2f, 0.2f, 0.2f);
+    lightingShader.setFloat("material.shininess", 32.0f);
 
     glm::vec3 lightColor;
-    lightColor.x = abs(sin(glfwGetTime() * 2.0f));
-    lightColor.y = abs(sin(glfwGetTime() * 0.7f));
-    lightColor.z = abs(sin(glfwGetTime() * 1.3f));
+    lightColor.x = 0.2 + abs(sin(glfwGetTime() * 2.0f));
+    lightColor.y = 0.2 + abs(sin(glfwGetTime() * 0.7f));
+    lightColor.z = 0.2 + abs(sin(glfwGetTime() * 1.3f));
 
-    glm::vec3 diffuseColor = lightColor   * glm::vec3(0.5f);
-    glm::vec3 ambientColor = lightColor * glm::vec3(0.2f);
+    glm::vec3 diffuseColor = lightColor * glm::vec3(0.5f);
+    glm::vec3 ambientColor = diffuseColor * glm::vec3(0.2f);
 
     lightingShader.setVec3f("light.ambient",  ambientColor.r, ambientColor.g, ambientColor.b);
     lightingShader.setVec3f("light.diffuse",  diffuseColor.r, diffuseColor.g, diffuseColor.b); // darken diffuse light a bit
@@ -476,15 +481,21 @@ int main(int argc, char** argv)
     /* draw the darn triangles, using the vertex array element array buffer */
     glBindVertexArray(VAO);
 
-    lightingShader.setInt("material.diffuse", texture0);
+    lightingShader.setInt("material.emission", matrix);
+    lightingShader.setInt("material.emission_map", container2_emission_map);
+    lightingShader.setInt("material.diffuse", container2);
+    lightingShader.setInt("material.specular", container2_specular);
 
     for (unsigned int i = 0; i < 10; i++) {
       glm::mat4 model = glm::translate(glm::mat4(1.0f), cubePositions[i]);
       float angle = 20.0f * i;
-      int happyface_index = 4;
+      int awesomeface_index = 4;
 
-      if (i == happyface_index) {
-        lightingShader.setInt("material.diffuse", texture3);
+      if (i == awesomeface_index) {
+        lightingShader.setInt("material.diffuse", awesomeface);
+        lightingShader.setInt("material.specular", blank);
+        lightingShader.setInt("material.emission", blank);
+        lightingShader.setInt("material.emission_map", blank);
         model = glm::rotate(model, (float)glfwGetTime() * glm::radians(angle), glm::vec3(1.0f, 1.0f, 0.5f));
       } else if (i % 3 == 0) {
         model = glm::rotate(model, (float)glfwGetTime() * glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
@@ -497,12 +508,19 @@ int main(int argc, char** argv)
       glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
       glDrawArrays(GL_TRIANGLES, 0, 36);
 
-      if (i == happyface_index) {
-        lightingShader.setInt("material.diffuse", texture0);
+      if (i == awesomeface_index) {
+        lightingShader.setInt("material.emission", matrix);
+        lightingShader.setInt("material.diffuse", container2);
+        lightingShader.setInt("material.specular", container2_specular);
+        lightingShader.setInt("material.emission_map", container2_emission_map);
       }
     }
 
-    lightingShader.setInt("material.diffuse", texture1);
+    lightingShader.setInt("material.diffuse", blank);
+    lightingShader.setInt("material.specular", blank);
+    lightingShader.setInt("material.emission", blank);
+    lightingShader.setInt("material.emission_map", blank);
+    lightingShader.setInt("material.diffuse", generic01);
 
     for (unsigned int i = 0; i < 50; i++) {
       for (unsigned int j = 0; j < 50; j++) {
@@ -523,7 +541,7 @@ int main(int argc, char** argv)
       }
     }
 
-    lightingShader.setInt("material.diffuse", texture2);
+    lightingShader.setInt("material.diffuse", generic02);
     model = glm::translate(glm::mat4(1.0f) , glm::vec3(-50.0f, -0.5f, -50.0f));
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     glBindVertexArray(VAO_plane);

@@ -13,5 +13,5 @@ uniform Light light;
 
 void main()
 {
-  FragColor = vec4(light.specular, 1.0); // set all 4 vector values to 1.0
+  FragColor = vec4(light.ambient + light.diffuse + light.specular, 1.0); // set all 4 vector values to 1.0
 }
