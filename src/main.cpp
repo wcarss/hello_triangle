@@ -412,11 +412,14 @@ int main(int argc, char** argv)
 
   // set up textures in shader:
   lightingShader.use(); // don't forget to activate the shader before setting uniforms!
-  lightingShader.setVec3f("lightPos", lightPos.x, lightPos.y, lightPos.z);
+  lightingShader.setVec3f("light.position", lightPos.x, lightPos.y, lightPos.z);
 
   // set up lighting
   lightingShader.setVec3f("objectColor", 1.0f, 0.5f, 0.31f);
   lightingShader.setVec3f("lightColor",  1.0f, 1.0f, 1.0f);
+  lightingShader.setFloat("light.constant",  1.0f);
+  lightingShader.setFloat("light.linear",    0.09f);
+  lightingShader.setFloat("light.quadratic", 0.016f);
 
   glm::vec3 cubePositions[] = {
     glm::vec3(0.0f,  0.0f,  0.0f),
@@ -457,23 +460,23 @@ int main(int argc, char** argv)
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
     // revolving light
-    //lightPos.x = 5 * sin(glfwGetTime() * 5.0f / 8.0f);
-    //lightPos.z = 5 * cos(glfwGetTime() * 5.0f / 8.0f);
-    //lightingShader.setVec3f("lightPos", lightPos.x, lightPos.y, lightPos.z);
+    lightPos.x = 5 * sin(glfwGetTime() * 5.0f / 8.0f);
+    lightPos.z = 5 * cos(glfwGetTime() * 5.0f / 8.0f);
+    lightingShader.setVec3f("light.position", lightPos.x, lightPos.y, lightPos.z);
     lightingShader.setVec3f("viewPos", cam.pos.x, cam.pos.y, cam.pos.z);
-    lightingShader.setVec3f("light.direction", -0.2f, -1.0f, -0.3f);
+    //lightingShader.setVec3f("light.direction", -0.2f, -1.0f, -0.3f);
 
     lightingShader.setVec3f("material.ambient", 1.0f, 0.5f, 0.31f);
     //lightingShader.setVec3f("material.specular", 0.2f, 0.2f, 0.2f);
     lightingShader.setFloat("material.shininess", 32.0f);
 
     glm::vec3 lightColor;
-    lightColor.x = 0.2 + abs(sin(glfwGetTime() * 2.0f));
-    lightColor.y = 0.2 + abs(sin(glfwGetTime() * 0.7f));
-    lightColor.z = 0.2 + abs(sin(glfwGetTime() * 1.3f));
+    lightColor.x = 0.2 + abs(sin(glfwGetTime() * 0.15f));
+    lightColor.y = 0.2 + abs(sin(glfwGetTime() * 0.17f));
+    lightColor.z = 0.2 + abs(sin(glfwGetTime() * 0.13f));
 
-    glm::vec3 diffuseColor = lightColor * glm::vec3(0.5f);
-    glm::vec3 ambientColor = diffuseColor * glm::vec3(0.2f);
+    glm::vec3 diffuseColor = lightColor * glm::vec3(0.65f);
+    glm::vec3 ambientColor = lightColor * glm::vec3(0.3f);
 
     lightingShader.setVec3f("light.ambient",  ambientColor.r, ambientColor.g, ambientColor.b);
     lightingShader.setVec3f("light.diffuse",  diffuseColor.r, diffuseColor.g, diffuseColor.b); // darken diffuse light a bit
