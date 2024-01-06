@@ -334,7 +334,7 @@ int main(int argc, char** argv)
   unsigned int container = loadTexture(0, "images/container.jpg");
   unsigned int container2 = loadTexture(1, "images/container2.png");
   unsigned int container2_specular = loadTexture(2, "images/container2_specular.png");
-  unsigned int generic01 = loadTexture(3, "images/altdev/generic-02.png");
+  unsigned int generic01 = loadTexture(3, "images/altdev/generic-07.png");
   unsigned int generic02 = loadTexture(4, "images/altdev/generic-12.png");
   unsigned int awesomeface = loadTexture(5, "images/awesomeface.png");
   unsigned int matrix = loadTexture(6, "images/matrix.jpg");
@@ -457,10 +457,11 @@ int main(int argc, char** argv)
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
     // revolving light
-    lightPos.x = 5 * sin(glfwGetTime() * 5.0f / 8.0f);
-    lightPos.z = 5 * cos(glfwGetTime() * 5.0f / 8.0f);
-    lightingShader.setVec3f("lightPos", lightPos.x, lightPos.y, lightPos.z);
+    //lightPos.x = 5 * sin(glfwGetTime() * 5.0f / 8.0f);
+    //lightPos.z = 5 * cos(glfwGetTime() * 5.0f / 8.0f);
+    //lightingShader.setVec3f("lightPos", lightPos.x, lightPos.y, lightPos.z);
     lightingShader.setVec3f("viewPos", cam.pos.x, cam.pos.y, cam.pos.z);
+    lightingShader.setVec3f("light.direction", -0.2f, -1.0f, -0.3f);
 
     lightingShader.setVec3f("material.ambient", 1.0f, 0.5f, 0.31f);
     //lightingShader.setVec3f("material.specular", 0.2f, 0.2f, 0.2f);
@@ -516,7 +517,6 @@ int main(int argc, char** argv)
       }
     }
 
-    lightingShader.setInt("material.diffuse", blank);
     lightingShader.setInt("material.specular", blank);
     lightingShader.setInt("material.emission", blank);
     lightingShader.setInt("material.emission_map", blank);

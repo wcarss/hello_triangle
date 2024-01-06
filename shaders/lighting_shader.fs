@@ -9,7 +9,7 @@ in vec3 FragPos;
 uniform vec3 lightPos;
 uniform vec3 viewPos;
 
-struct Light {
+struct PositionLight {
   vec3 position;
 
   vec3 ambient;
@@ -17,7 +17,17 @@ struct Light {
   vec3 specular;
 };
 
-uniform Light light;
+uniform PositionLight positionlight;
+
+struct DirectionLight {
+  vec3 direction;
+
+  vec3 ambient;
+  vec3 diffuse;
+  vec3 specular;
+};
+
+uniform DirectionLight light;
 
 struct Material {
   sampler2D emission;
@@ -37,7 +47,8 @@ void main()
 
   // diffuse
   vec3 norm = normalize(Normal);
-  vec3 lightDir = normalize(lightPos - FragPos);
+  //vec3 lightDir = normalize(lightPos - FragPos);
+  vec3 lightDir = normalize(-light.direction);
   float diff = max(dot(norm, lightDir), 0.0);
   vec3 diffuse = light.diffuse * diff * texture(material.diffuse, TexCoord).rgb;
 
