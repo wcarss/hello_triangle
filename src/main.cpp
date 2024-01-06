@@ -11,9 +11,6 @@
 #define INFOLOG_LENGTH 512
 #define BUFFER_OFFSET(i) ((char *)NULL + (i))
 
-float pitch = 0.0f;
-float yaw = -90.0f;
-
 typedef struct {
   glm::vec3 pos;
   glm::vec3 front;
@@ -34,7 +31,124 @@ typedef struct {
   float fallSpeed;
   float gravity;
   bool canJump;
+  float pitch;
+  float yaw;
 } Camera;
+
+typedef struct {
+  Camera* cam;
+} GameContext;
+
+void setupCam(Camera* cam)
+{
+  cam->pos = glm::vec3(0.0f, 0.0f,  3.0f);
+  cam->front = glm::vec3(0.0f, 0.0f, -1.0f);
+  cam->up = glm::vec3(0.0f, 1.0f,  0.0f);
+  cam->forwardPressed = false;
+  cam->backwardPressed = false;
+  cam->leftPressed = false;
+  cam->rightPressed = false;
+  cam->speed = 2.5f;
+  cam->height = 0;
+  cam->jump = false;
+  cam->shouldJump = false;
+  cam->jumpStart = 0.0f;
+  cam->jumpSpeed = 0.0f;
+  cam->maxJumpSpeed = 4.5f;
+  cam->jumpTime = 1.29f;
+  cam->fallSpeed = 0.0f;
+  cam->maxFallSpeed = 7.0f;
+  cam->gravity = 3.5f;
+  cam->canJump = true;
+  cam->pitch = 0.0f;
+  cam->yaw = -90.0f;
+}
+
+void processCamera(Camera* cam, float deltaTime, float currentFrame)
+{
+  float deltaSpeed = cam->speed * deltaTime;
+
+  if (!cam->jump && cam->shouldJump) {
+    cam->shouldJump = false;
+    cam->canJump = false;
+    cam->jump = true;
+    cam->jumpStart = currentFrame;
+    cam->jumpSpeed = cam->maxJumpSpeed;
+  }
+
+  if (cam->forwardPressed) {
+    cam->forwardPressed = false;
+    cam->pos += deltaSpeed * cam->front;
+  }
+
+  if (cam->backwardPressed) {
+    cam->backwardPressed = false;
+    cam->pos -= deltaSpeed * cam->front;
+  }
+
+  if (cam->leftPressed) {
+    cam->leftPressed = false;
+    cam->pos -= glm::normalize(glm::cross(cam->front, cam->up)) * deltaSpeed;
+  }
+
+  if (cam->rightPressed) {
+    cam->rightPressed = false;
+    cam->pos += glm::normalize(glm::cross(cam->front, cam->up)) * deltaSpeed;
+  }
+
+  if (cam->jump == true) {
+    float jumpStartDelta = currentFrame - cam->jumpStart;
+
+    // jump runs for "2 seconds", or something.
+    if (jumpStartDelta < cam->jumpTime) {
+      cam->height += cam->jumpSpeed * deltaTime;
+      cam->jumpSpeed -= cam->gravity * deltaTime;
+
+      if (cam->jumpSpeed < 0.0f) {
+        //printf("redundant jump speed call: %f\n", cam->jumpSpeed);
+        cam->jumpSpeed = 0;
+      }
+    } else {
+      cam->jump = false;
+      cam->jumpStart = 0;
+      cam->fallSpeed = cam->jumpSpeed;
+    }
+  } else if (cam->height > 0.1f) {
+    cam->height -= cam->fallSpeed * deltaTime;
+    cam->fallSpeed += cam->gravity * deltaTime;
+
+    if (cam->fallSpeed > cam->maxFallSpeed) {
+      cam->fallSpeed = cam->maxFallSpeed;
+    }
+  } else if (cam->height < 0.1f) {
+    cam->canJump = true;
+    cam->height = 0.0f;
+    cam->fallSpeed = 0.0f;
+  }
+
+  cam->pos.y = cam->height;
+
+  glm::vec3 direction;
+  direction.x = cos(glm::radians(cam->yaw)) * cos(glm::radians(cam->pitch));
+  direction.y = sin(glm::radians(cam->pitch));
+  direction.z = sin(glm::radians(cam->yaw)) * cos(glm::radians(cam->pitch));
+  cam->front = glm::normalize(direction);
+}
+
+void changeCameraAngles(Camera *cam, float xoffset, float yoffset)
+{
+  cam->yaw   += xoffset;
+  cam->pitch += yoffset;
+
+  // keeps us locked to sane angles
+  if (cam->pitch > 89.0f) {
+    cam->pitch =  89.0f;
+  }
+
+  if (cam->pitch < -89.0f) {
+    cam->pitch = -89.0f;
+  }
+}
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
@@ -63,17 +177,8 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
   xoffset *= sensitivity;
   yoffset *= sensitivity;
 
-  yaw   += xoffset;
-  pitch += yoffset;
-
-  // keeps us locked to sane angles
-  if (pitch > 89.0f) {
-    pitch =  89.0f;
-  }
-
-  if (pitch < -89.0f) {
-    pitch = -89.0f;
-  }
+  GameContext* game = (GameContext *) glfwGetWindowUserPointer(window);
+  changeCameraAngles(game->cam, xoffset, yoffset);
 }
 
 void processInput(GLFWwindow *window, Camera* cam)
@@ -103,29 +208,6 @@ void processInput(GLFWwindow *window, Camera* cam)
   if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
     cam->rightPressed = true;
   }
-}
-
-void setupCam(Camera* cam)
-{
-  cam->pos = glm::vec3(0.0f, 0.0f,  3.0f);
-  cam->front = glm::vec3(0.0f, 0.0f, -1.0f);
-  cam->up = glm::vec3(0.0f, 1.0f,  0.0f);
-  cam->forwardPressed = false;
-  cam->backwardPressed = false;
-  cam->leftPressed = false;
-  cam->rightPressed = false;
-  cam->speed = 2.5f;
-  cam->height = 0;
-  cam->jump = false;
-  cam->shouldJump = false;
-  cam->jumpStart = 0.0f;
-  cam->jumpSpeed = 0.0f;
-  cam->maxJumpSpeed = 4.5f;
-  cam->jumpTime = 1.29f;
-  cam->fallSpeed = 0.0f;
-  cam->maxFallSpeed = 7.0f;
-  cam->gravity = 3.5f;
-  cam->canJump = true;
 }
 
 int loadTexture(int tex_number, const char *path)
@@ -202,8 +284,10 @@ int main(int argc, char** argv)
   const int WINDOW_WIDTH = 1280;
   const int WINDOW_HEIGHT = 720;
   GLFWwindow* window;
+  GameContext game;
   Camera cam;
   setupCam(&cam);
+  game.cam = &cam;
   float deltaTime = 0.0f; // Time between current frame and last frame
   float lastFrame = 0.0f; // Time of last frame
   glm::vec3 lightPos(0.2f, 1.0f, 2.0f);
@@ -236,6 +320,8 @@ int main(int argc, char** argv)
     printf("Failed to initialize GLAD\n");
     return -1;
   }
+
+  glfwSetWindowUserPointer(window, (void *)&game);
 
   glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
   glfwSetCursorPosCallback(window, mouse_callback);
@@ -347,83 +433,15 @@ int main(int argc, char** argv)
     lastFrame = currentFrame;
 
     processInput(window, &cam);
-    float deltaSpeed = cam.speed * deltaTime;
-
-    if (!cam.jump && cam.shouldJump) {
-      cam.shouldJump = false;
-      cam.canJump = false;
-      cam.jump = true;
-      cam.jumpStart = currentFrame;
-      cam.jumpSpeed = cam.maxJumpSpeed;
-    }
-
-    if (cam.forwardPressed) {
-      cam.forwardPressed = false;
-      cam.pos += deltaSpeed * cam.front;
-    }
-
-    if (cam.backwardPressed) {
-      cam.backwardPressed = false;
-      cam.pos -= deltaSpeed * cam.front;
-    }
-
-    if (cam.leftPressed) {
-      cam.leftPressed = false;
-      cam.pos -= glm::normalize(glm::cross(cam.front, cam.up)) * deltaSpeed;
-    }
-
-    if (cam.rightPressed) {
-      cam.rightPressed = false;
-      cam.pos += glm::normalize(glm::cross(cam.front, cam.up)) * deltaSpeed;
-    }
-
-    if (cam.jump == true) {
-      float jumpStartDelta = currentFrame - cam.jumpStart;
-
-      // jump runs for "2 seconds", or something.
-      if (jumpStartDelta < cam.jumpTime) {
-        cam.height += cam.jumpSpeed * deltaTime;
-        cam.jumpSpeed -= cam.gravity * deltaTime;
-
-        if (cam.jumpSpeed < 0.0f) {
-          //printf("redundant jump speed call: %f\n", cam.jumpSpeed);
-          cam.jumpSpeed = 0;
-        }
-      } else {
-        cam.jump = false;
-        cam.jumpStart = 0;
-        cam.fallSpeed = cam.jumpSpeed;
-      }
-    } else if (cam.height > 0.1f) {
-      cam.height -= cam.fallSpeed * deltaTime;
-      cam.fallSpeed += cam.gravity * deltaTime;
-
-      if (cam.fallSpeed > cam.maxFallSpeed) {
-        cam.fallSpeed = cam.maxFallSpeed;
-      }
-    } else if (cam.height < 0.1f) {
-      cam.canJump = true;
-      cam.height = 0.0f;
-      cam.fallSpeed = 0.0f;
-    }
-
-    cam.pos.y = cam.height;
+    processCamera(&cam, deltaTime, currentFrame);
 
     /* Render here */
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the buffers
 
     glm::mat4 model = glm::mat4(1.0f);
-    glm::mat4 view = glm::mat4(1.0f);
-    glm::vec3 direction;
-    direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-    direction.y = sin(glm::radians(pitch));
-    direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-    cam.front = glm::normalize(direction);
-    view = glm::lookAt(cam.pos, cam.pos + cam.front, cam.up);
-
-    glm::mat4 projection;
-    projection = glm::perspective(glm::radians(45.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
+    glm::mat4 view = glm::lookAt(cam.pos, cam.pos + cam.front, cam.up);
+    glm::mat4 projection = glm::perspective(glm::radians(45.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
 
     lightingShader.use();
     unsigned int modelLoc = glGetUniformLocation(lightingShader.ID, "model");
