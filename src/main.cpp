@@ -18,12 +18,22 @@ typedef struct {
   glm::vec3 pos;
   glm::vec3 front;
   glm::vec3 up;
+  bool forwardPressed;
+  bool backwardPressed;
+  bool leftPressed;
+  bool rightPressed;
   float speed;
   float height;
+  bool shouldJump;
   bool jump;
-  float jumpstart;
-  float jumpspeed;
-  float fall;
+  float jumpStart;
+  float jumpSpeed;
+  float maxFallSpeed;
+  float maxJumpSpeed;
+  float jumpTime;
+  float fallSpeed;
+  float gravity;
+  bool canJump;
 } Camera;
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
@@ -66,38 +76,32 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
   }
 }
 
-void processInput(GLFWwindow *window, Camera* cam, float deltaTime, float currentTime)
+void processInput(GLFWwindow *window, Camera* cam)
 {
   if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
     glfwSetWindowShouldClose(window, true);
   }
 
-  float deltaSpeed = cam->speed * deltaTime;
+  cam->shouldJump = false;
 
-  if (!cam->jump && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-    cam->jump = true;
-    cam->jumpstart = currentTime;
-    cam->jumpspeed = 3.0f;
+  if (cam->canJump && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+    cam->shouldJump = true;
   }
 
   if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-    cam->pos += deltaSpeed * cam->front;
-    cam->pos.y = cam->height;
+    cam->forwardPressed = true;
   }
 
   if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-    cam->pos -= deltaSpeed * cam->front;
-    cam->pos.y = cam->height;
+    cam->backwardPressed = true;
   }
 
   if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-    cam->pos -= glm::normalize(glm::cross(cam->front, cam->up)) * deltaSpeed;
-    cam->pos.y = cam->height;
+    cam->leftPressed = true;
   }
 
   if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-    cam->pos += glm::normalize(glm::cross(cam->front, cam->up)) * deltaSpeed;
-    cam->pos.y = cam->height;
+    cam->rightPressed = true;
   }
 }
 
@@ -106,12 +110,22 @@ void setupCam(Camera* cam)
   cam->pos = glm::vec3(0.0f, 0.0f,  3.0f);
   cam->front = glm::vec3(0.0f, 0.0f, -1.0f);
   cam->up = glm::vec3(0.0f, 1.0f,  0.0f);
+  cam->forwardPressed = false;
+  cam->backwardPressed = false;
+  cam->leftPressed = false;
+  cam->rightPressed = false;
   cam->speed = 2.5f;
   cam->height = 0;
   cam->jump = false;
-  cam->jumpstart = 0.0f;
-  cam->jumpspeed = 0.0f;
-  cam->fall = 3.6f;
+  cam->shouldJump = false;
+  cam->jumpStart = 0.0f;
+  cam->jumpSpeed = 0.0f;
+  cam->maxJumpSpeed = 4.5f;
+  cam->jumpTime = 1.29f;
+  cam->fallSpeed = 0.0f;
+  cam->maxFallSpeed = 7.0f;
+  cam->gravity = 3.5f;
+  cam->canJump = true;
 }
 
 int loadTexture(int tex_number, const char *path)
@@ -120,7 +134,6 @@ int loadTexture(int tex_number, const char *path)
   unsigned int texture;
   glGenTextures(1, &texture);
   glActiveTexture(GL_TEXTURE0 + tex_number);
-
   glBindTexture(GL_TEXTURE_2D, texture);
 
   unsigned char *data = stbi_load(path, &width, &height, &nrChannels, 0);
@@ -238,7 +251,6 @@ int main(int argc, char** argv)
   unsigned int texture3 = loadTexture(3, "images/awesomeface.png");
 
   /* end texture loading */
-
   Shader lightingShader("shaders/lighting_shader.vs", "shaders/lighting_shader.fs");
   Shader lightCubeShader("shaders/light_cube_shader.vs", "shaders/light_cube_shader.fs");
 
@@ -334,28 +346,68 @@ int main(int argc, char** argv)
     deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;
 
-    if (cam.jump == true) {
-      float jumpstartdelta = currentFrame - cam.jumpstart;
+    processInput(window, &cam);
+    float deltaSpeed = cam.speed * deltaTime;
 
-      // jump runs for "2 seconds", or something.
-      if (jumpstartdelta < 2) {
-        cam.height += cam.jumpspeed * deltaTime;
-        cam.jumpspeed -= cam.fall * deltaTime;
-      } else {
-        cam.jump = false;
-        cam.jumpstart = 0;
-      }
-    } else if (cam.height > 0.0f && cam.jump != true) {
-      cam.height -= cam.fall * deltaTime;
+    if (!cam.jump && cam.shouldJump) {
+      cam.shouldJump = false;
+      cam.canJump = false;
+      cam.jump = true;
+      cam.jumpStart = currentFrame;
+      cam.jumpSpeed = cam.maxJumpSpeed;
     }
 
-    if (cam.height < 0.0f) {
+    if (cam.forwardPressed) {
+      cam.forwardPressed = false;
+      cam.pos += deltaSpeed * cam.front;
+    }
+
+    if (cam.backwardPressed) {
+      cam.backwardPressed = false;
+      cam.pos -= deltaSpeed * cam.front;
+    }
+
+    if (cam.leftPressed) {
+      cam.leftPressed = false;
+      cam.pos -= glm::normalize(glm::cross(cam.front, cam.up)) * deltaSpeed;
+    }
+
+    if (cam.rightPressed) {
+      cam.rightPressed = false;
+      cam.pos += glm::normalize(glm::cross(cam.front, cam.up)) * deltaSpeed;
+    }
+
+    if (cam.jump == true) {
+      float jumpStartDelta = currentFrame - cam.jumpStart;
+
+      // jump runs for "2 seconds", or something.
+      if (jumpStartDelta < cam.jumpTime) {
+        cam.height += cam.jumpSpeed * deltaTime;
+        cam.jumpSpeed -= cam.gravity * deltaTime;
+
+        if (cam.jumpSpeed < 0.0f) {
+          //printf("redundant jump speed call: %f\n", cam.jumpSpeed);
+          cam.jumpSpeed = 0;
+        }
+      } else {
+        cam.jump = false;
+        cam.jumpStart = 0;
+        cam.fallSpeed = cam.jumpSpeed;
+      }
+    } else if (cam.height > 0.1f) {
+      cam.height -= cam.fallSpeed * deltaTime;
+      cam.fallSpeed += cam.gravity * deltaTime;
+
+      if (cam.fallSpeed > cam.maxFallSpeed) {
+        cam.fallSpeed = cam.maxFallSpeed;
+      }
+    } else if (cam.height < 0.1f) {
+      cam.canJump = true;
       cam.height = 0.0f;
+      cam.fallSpeed = 0.0f;
     }
 
     cam.pos.y = cam.height;
-
-    processInput(window, &cam, deltaTime, currentFrame);
 
     /* Render here */
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
