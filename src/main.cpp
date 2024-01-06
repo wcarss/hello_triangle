@@ -66,7 +66,7 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
   }
 }
 
-void processInput(GLFWwindow *window, Camera* cam, float *textureSwap, float deltaTime, float currentTime)
+void processInput(GLFWwindow *window, Camera* cam, float deltaTime, float currentTime)
 {
   if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
     glfwSetWindowShouldClose(window, true);
@@ -99,14 +99,6 @@ void processInput(GLFWwindow *window, Camera* cam, float *textureSwap, float del
     cam->pos += glm::normalize(glm::cross(cam->front, cam->up)) * deltaSpeed;
     cam->pos.y = cam->height;
   }
-
-  if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
-    *textureSwap += 0.01;
-    std::cout << "textureSwap up: " << *textureSwap << std::endl;
-  } else if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-    *textureSwap -= 0.01;
-    std::cout << "textureSwap down: " << *textureSwap << std::endl;
-  }
 }
 
 void setupCam(Camera* cam)
@@ -122,37 +114,39 @@ void setupCam(Camera* cam)
   cam->fall = 3.6f;
 }
 
-unsigned int loadTexture(uint tex_number, const char *path)
+int loadTexture(int tex_number, const char *path)
 {
   int width, height, nrChannels;
   unsigned int texture;
   glGenTextures(1, &texture);
   glActiveTexture(GL_TEXTURE0 + tex_number);
+
   glBindTexture(GL_TEXTURE_2D, texture);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
   unsigned char *data = stbi_load(path, &width, &height, &nrChannels, 0);
 
   if (data) {
     int pathLen = strlen(path);
 
     if (strcmp(&path[pathLen - 4], ".jpg") == 0) {
-      // printf("got jpg for path: %s\n", path);
+      printf("got jpg for path: %s\n", path);
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
     } else {
-      // printf("got non-jpg for path: %s\n", path);
+      printf("got non-jpg for path: %s\n", path);
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
     }
 
     glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   } else {
     std::cout << "Failed to load texture" << std::endl;
   }
 
   stbi_image_free(data);
-  return texture;
+  return tex_number;
 }
 
 int loadObject(float *vertices, unsigned int array_size)
@@ -195,8 +189,6 @@ int main(int argc, char** argv)
   const int WINDOW_WIDTH = 1280;
   const int WINDOW_HEIGHT = 720;
   GLFWwindow* window;
-  float textureSwap = 0.2;
-  int texSelect = 0;
   Camera cam;
   setupCam(&cam);
   float deltaTime = 0.0f; // Time between current frame and last frame
@@ -240,10 +232,10 @@ int main(int argc, char** argv)
   /* texture loading */
   // flip images to a right-side-up view:
   stbi_set_flip_vertically_on_load(true);
-  unsigned int texture1 = loadTexture(0, "images/container.jpg");
-  unsigned int texture2 = loadTexture(1, "images/awesomeface.png");
-  unsigned int texture3 = loadTexture(2, "images/altdev/generic-02.png");
-  unsigned int texture4 = loadTexture(3, "images/altdev/generic-12.png");
+  unsigned int texture0 = loadTexture(0, "images/container.jpg");
+  unsigned int texture1 = loadTexture(1, "images/altdev/generic-02.png");
+  unsigned int texture2 = loadTexture(2, "images/altdev/generic-12.png");
+  unsigned int texture3 = loadTexture(3, "images/awesomeface.png");
 
   /* end texture loading */
 
@@ -317,12 +309,6 @@ int main(int argc, char** argv)
 
   // set up textures in shader:
   lightingShader.use(); // don't forget to activate the shader before setting uniforms!
-  texSelect = 0;
-  lightingShader.setInt("texSelect", texSelect); // use blended texture by default
-  lightingShader.setInt("texture1", 0); // or with shader class
-  lightingShader.setInt("texture2", 1); // or with shader class
-  lightingShader.setInt("texture3", 2); // or with shader class
-  lightingShader.setInt("texture4", 3); // or with shader class
   lightingShader.setVec3f("lightPos", lightPos.x, lightPos.y, lightPos.z);
 
   // set up lighting
@@ -380,7 +366,7 @@ int main(int argc, char** argv)
 
     cam.pos.y = cam.height;
 
-    processInput(window, &cam, &textureSwap, deltaTime, currentFrame);
+    processInput(window, &cam, deltaTime, currentFrame);
 
     /* Render here */
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -405,14 +391,14 @@ int main(int argc, char** argv)
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
-    lightingShader.setFloat("textureSwap", textureSwap);
+
+    // revolving light
     lightPos.x = 5 * sin(glfwGetTime() * 5.0f / 8.0f);
     lightPos.z = 5 * cos(glfwGetTime() * 5.0f / 8.0f);
     lightingShader.setVec3f("lightPos", lightPos.x, lightPos.y, lightPos.z);
     lightingShader.setVec3f("viewPos", cam.pos.x, cam.pos.y, cam.pos.z);
 
     lightingShader.setVec3f("material.ambient", 1.0f, 0.5f, 0.31f);
-    lightingShader.setInt("material.diffuse", 0);
     lightingShader.setVec3f("material.specular", 0.2f, 0.2f, 0.2f);
     lightingShader.setFloat("material.shininess", 8.0f);
 
@@ -429,28 +415,17 @@ int main(int argc, char** argv)
     lightingShader.setVec3f("light.specular", 1.0f, 1.0f, 1.0f);
 
     /* draw the darn triangles, using the vertex array element array buffer */
-    glActiveTexture(GL_TEXTURE0); // activate the texture unit first before binding texture
-    glBindTexture(GL_TEXTURE_2D, texture1);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, texture2);
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, texture3);
-    glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, texture4);
     glBindVertexArray(VAO);
-    //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
-    texSelect = 0;
-    lightingShader.setInt("material.diffuse", 1);
-    lightingShader.setInt("texSelect", texSelect); // use blended texture by default
+    lightingShader.setInt("material.diffuse", texture0);
 
     for (unsigned int i = 0; i < 10; i++) {
-      glm::mat4 model = glm::mat4(1.0f);
-
-      model = glm::translate(model, cubePositions[i]);
+      glm::mat4 model = glm::translate(glm::mat4(1.0f), cubePositions[i]);
       float angle = 20.0f * i;
+      int happyface_index = 4;
 
-      if (i % 6 == 0) {
+      if (i == happyface_index) {
+        lightingShader.setInt("material.diffuse", texture3);
         model = glm::rotate(model, (float)glfwGetTime() * glm::radians(angle), glm::vec3(1.0f, 1.0f, 0.5f));
       } else if (i % 3 == 0) {
         model = glm::rotate(model, (float)glfwGetTime() * glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
@@ -462,11 +437,13 @@ int main(int argc, char** argv)
 
       glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
       glDrawArrays(GL_TRIANGLES, 0, 36);
+
+      if (i == happyface_index) {
+        lightingShader.setInt("material.diffuse", texture0);
+      }
     }
 
-    texSelect = 3;
-    lightingShader.setInt("material.diffuse", texSelect);
-    lightingShader.setInt("texSelect", texSelect); // use other texture
+    lightingShader.setInt("material.diffuse", texture1);
 
     for (unsigned int i = 0; i < 50; i++) {
       for (unsigned int j = 0; j < 50; j++) {
@@ -487,17 +464,13 @@ int main(int argc, char** argv)
       }
     }
 
-    texSelect = 4;
-    lightingShader.setInt("material.diffuse", texSelect);
-    lightingShader.setInt("texSelect", texSelect); // use other texture
-    model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(-50.0f, -0.5f, -50.0f));
+    lightingShader.setInt("material.diffuse", texture2);
+    model = glm::translate(glm::mat4(1.0f) , glm::vec3(-50.0f, -0.5f, -50.0f));
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     glBindVertexArray(VAO_plane);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
-    model = glm::mat4(1.0f);
-    model = glm::translate(model, lightPos);
+    model = glm::translate(glm::mat4(1.0f), lightPos);
     model = glm::scale(model, glm::vec3(0.2f));
     lightCubeShader.use();
     lightCubeShader.setVec3f("light.specular", lightColor.r, lightColor.g, lightColor.b);
