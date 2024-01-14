@@ -10,6 +10,8 @@
 
 #define MAX_NUM_OF_LIGHTS 100
 #define INFOLOG_LENGTH 512
+#define WITHOUT_ATTRIBUTES 0
+#define WITH_ATTRIBUTES 1
 #define BUFFER_OFFSET(i) ((char *)NULL + (i))
 
 typedef struct {
@@ -240,7 +242,7 @@ void updateDirLightColor(PointLight *light, glm::vec3 color)
 
 void setupDirLightDefaults(DirLight *light)
 {
-  light->dir = glm::vec3(0.7f,  0.2f,  2.0f);
+  light->dir = glm::vec3(0.2f,  -0.4f,  1.0f);
   light->specular = glm::vec3(1.0f);
   light->diffuse = light->specular * 0.65f;
   light->ambient = light->specular * 0.3f;
@@ -327,6 +329,7 @@ int loadTexture(int tex_number, const char *path)
   int width, height, nrChannels;
   unsigned int texture;
   glGenTextures(1, &texture);
+  std::cout << "loadTexture texture id set to: " << texture << " for path " << path << std::endl;
   glActiveTexture(GL_TEXTURE0 + tex_number);
   glBindTexture(GL_TEXTURE_2D, texture);
 
@@ -353,10 +356,10 @@ int loadTexture(int tex_number, const char *path)
   }
 
   stbi_image_free(data);
-  return tex_number;
+  return texture;
 }
 
-int loadObject(float *vertices, unsigned int array_size)
+int loadObject(float *vertices, unsigned int array_size, int with_attributes)
 {
   unsigned int VAO;
   glGenVertexArrays(1, &VAO);
@@ -378,17 +381,68 @@ int loadObject(float *vertices, unsigned int array_size)
   /* end declare vertices */
 
   /* set up attribute arrays */
-  // vertex attributes
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-  glEnableVertexAttribArray(0);
-  // normals
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-  glEnableVertexAttribArray(1);
-  // texture attributes
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-  glEnableVertexAttribArray(2);
+  if (with_attributes == WITH_ATTRIBUTES) {
+    // vertex attributes
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    // normals
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    // texture attributes
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+  } else {
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+  }
 
   return VAO;
+}
+
+unsigned int loadCubemap(int tex_number, std::vector<std::string> faces)
+{
+  unsigned int textureID;
+  glGenTextures(1, &textureID);
+  std::cout << "cubemap textureID set to: " << textureID << std::endl;
+  glActiveTexture(GL_TEXTURE0 + textureID);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+
+  int width, height, nrChannels;
+
+  for (unsigned int i = 0; i < faces.size(); i++) {
+    unsigned char *data = stbi_load(faces[i].c_str(), &width, &height, &nrChannels, 0);
+
+    if (data) {
+      if (nrChannels == 3) {
+        std::cout << "3 channels and w,h " << width << ", " << height << " at path: " << faces[i] << std::endl;
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+                     0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data
+                    );
+      } else if (nrChannels == 4) {
+        if (width != height) {
+          height = width;
+        }
+
+        std::cout << "4 channels and w,h " << width << ", " << height << " at path: " << faces[i] << std::endl;
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+                     0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data
+                    );
+      }
+
+      stbi_image_free(data);
+    } else {
+      std::cout << "Cubemap tex failed to load at path: " << faces[i] << std::endl;
+      stbi_image_free(data);
+    }
+  }
+
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+  return textureID;
 }
 
 int main(int argc, char** argv)
@@ -469,21 +523,42 @@ int main(int argc, char** argv)
   glEnable(GL_DEPTH_TEST);
 
   /* texture loading */
-  // flip images to a right-side-up view:
+  std::vector<std::string> vfaces = {
+    "images/skybox/tutorial/right.jpg",
+    "images/skybox/tutorial/left.jpg",
+    "images/skybox/tutorial/top.jpg",
+    "images/skybox/tutorial/bottom.jpg",
+    "images/skybox/tutorial/front.jpg",
+    "images/skybox/tutorial/back.jpg"
+  };
+  std::vector<std::string> kfaces = {
+    "images/skybox/kenney_voxel_pack/skybox_side1.png",
+    "images/skybox/kenney_voxel_pack/skybox_side2.png",
+    "images/skybox/kenney_voxel_pack/skybox_top.png",
+    "images/skybox/kenney_voxel_pack/skybox_bottom.png",
+    "images/skybox/kenney_voxel_pack/skybox_side3.png",
+    "images/skybox/kenney_voxel_pack/skybox_side4.png"
+  };
+
+
+  // flip the rest of the images around vertically
   stbi_set_flip_vertically_on_load(true);
-  unsigned int container = loadTexture(0, "images/container.jpg");
-  unsigned int container2 = loadTexture(1, "images/container2.png");
-  unsigned int container2_specular = loadTexture(2, "images/container2_specular.png");
-  unsigned int generic01 = loadTexture(3, "images/altdev/generic-07.png");
-  unsigned int generic02 = loadTexture(4, "images/altdev/generic-12.png");
-  unsigned int awesomeface = loadTexture(5, "images/awesomeface.png");
-  unsigned int matrix = loadTexture(6, "images/matrix.jpg");
-  unsigned int blank = loadTexture(7, "images/1x1.png");
-  unsigned int container2_emission_map = loadTexture(8, "images/container2_emission_map.png");
+  unsigned int container = loadTexture(1, "images/container.jpg");
+  unsigned int container2 = loadTexture(2, "images/container2.png");
+  unsigned int container2_specular = loadTexture(3, "images/container2_specular.png");
+  unsigned int generic01 = loadTexture(4, "images/altdev/generic-07.png");
+  unsigned int generic02 = loadTexture(5, "images/altdev/generic-12.png");
+  unsigned int awesomeface = loadTexture(6, "images/awesomeface.png");
+  unsigned int matrix = loadTexture(7, "images/matrix.jpg");
+  unsigned int blank = loadTexture(8, "images/1x1.png");
+  unsigned int container2_emission_map = loadTexture(9, "images/container2_emission_map.png");
+  stbi_set_flip_vertically_on_load(false);
+  unsigned int cubemapTexture = loadCubemap(10, vfaces);
 
   /* end texture loading */
   Shader lightingShader("shaders/lighting_shader.vs", "shaders/lighting_shader.fs");
   Shader lightCubeShader("shaders/light_cube_shader.vs", "shaders/light_cube_shader.fs");
+  Shader skyboxShader("shaders/skybox_shader.vs", "shaders/skybox_shader.fs");
 
   /* declare vertices */
   float vertices_cube[] = {
@@ -538,20 +613,69 @@ int main(int argc, char** argv)
     0.0f,   0.0f, 100.0f,  0.0f, 1.0f, 0.0f,    0.0f, 100.0f,
     100.0f, 0.0f, 100.0f,  0.0f, 1.0f, 0.0f,    100.0f, 100.0f,
   };
+
+  float vertices_skybox[] = {
+    // positions
+    -1.0f,  1.0f, -1.0f,
+    -1.0f, -1.0f, -1.0f,
+    1.0f, -1.0f, -1.0f,
+    1.0f, -1.0f, -1.0f,
+    1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,
+
+    -1.0f, -1.0f,  1.0f,
+    -1.0f, -1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f,  1.0f,
+    -1.0f, -1.0f,  1.0f,
+
+    1.0f, -1.0f, -1.0f,
+    1.0f, -1.0f,  1.0f,
+    1.0f,  1.0f,  1.0f,
+    1.0f,  1.0f,  1.0f,
+    1.0f,  1.0f, -1.0f,
+    1.0f, -1.0f, -1.0f,
+
+    -1.0f, -1.0f,  1.0f,
+    -1.0f,  1.0f,  1.0f,
+    1.0f,  1.0f,  1.0f,
+    1.0f,  1.0f,  1.0f,
+    1.0f, -1.0f,  1.0f,
+    -1.0f, -1.0f,  1.0f,
+
+    -1.0f,  1.0f, -1.0f,
+    1.0f,  1.0f, -1.0f,
+    1.0f,  1.0f,  1.0f,
+    1.0f,  1.0f,  1.0f,
+    -1.0f,  1.0f,  1.0f,
+    -1.0f,  1.0f, -1.0f,
+
+    -1.0f, -1.0f, -1.0f,
+    -1.0f, -1.0f,  1.0f,
+    1.0f, -1.0f, -1.0f,
+    1.0f, -1.0f, -1.0f,
+    -1.0f, -1.0f,  1.0f,
+    1.0f, -1.0f,  1.0f
+  };
   //unsigned int indices[] = {  // note that we start from 0!
   //  0, 1, 3,   // first triangle
   //  1, 2, 3    // second triangle
   //};
 
-  unsigned int VAO = loadObject(vertices_cube, sizeof(vertices_cube));
-  unsigned int VAO_plane = loadObject(vertices_plane, sizeof(vertices_plane));
-  unsigned int lightCubeVAO = loadObject(vertices_cube, sizeof(vertices_cube));
+  unsigned int VAO = loadObject(vertices_cube, sizeof(vertices_cube), WITH_ATTRIBUTES);
+  unsigned int VAO_plane = loadObject(vertices_plane, sizeof(vertices_plane), WITH_ATTRIBUTES);
+  unsigned int lightCubeVAO = loadObject(vertices_cube, sizeof(vertices_cube), WITH_ATTRIBUTES);
+  unsigned int VAO_skybox = loadObject(vertices_skybox, sizeof(vertices_skybox), WITHOUT_ATTRIBUTES);
 
   // un-comment to use wireframe mode:
   // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
   // set up textures in shader:
+  skyboxShader.use();
+  skyboxShader.setInt("skybox", cubemapTexture);
   lightingShader.use(); // don't forget to activate the shader before setting uniforms!
+  lightingShader.setInt("skybox", cubemapTexture);
 
   // set up lighting
   lightingShader.setVec3f("objectColor", 1.0f, 0.5f, 0.31f);
@@ -571,9 +695,9 @@ int main(int argc, char** argv)
     glm::vec3(-1.3f,  1.0f, -1.5f),
   };
 
-  lightingShader.setVec3f("dir.direction", -0.2f, -1.0f, -0.3f);
-  lightingShader.setVec3f("dir.diffuse", 0.4f, 0.13f, 0.13f);
-  lightingShader.setVec3f("dir.ambient", 0.4f * 0.3f, 0.13f * 0.3f, 0.13f * 0.3f);
+  lightingShader.setVec3f("dirLight.dir", dirLight.dir.x, dirLight.dir.y, dirLight.dir.z);
+  lightingShader.setVec3f("dirLight.diffuse", dirLight.diffuse.r, dirLight.diffuse.g, dirLight.diffuse.b);
+  lightingShader.setVec3f("dirLight.ambient", dirLight.ambient.r, dirLight.ambient.g, dirLight.ambient.b);
 
   /* Loop until the user closes the window */
   while (!glfwWindowShouldClose(window)) {
@@ -583,19 +707,33 @@ int main(int argc, char** argv)
 
     processInput(window, &cam);
     processCamera(&cam, deltaTime, currentFrame);
+
+    glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the buffers
+
+    glDepthMask(GL_FALSE);
+    skyboxShader.use();
+
+    glm::mat4 model = glm::mat4(1.0f);
+    glm::mat4 view = glm::lookAt(cam.pos, cam.pos + cam.front, cam.up);
+    glm::mat4 projection = glm::perspective(glm::radians(45.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
+    glm::mat4 skybox_view = glm::mat4(glm::mat3(view));
+
+    unsigned int skyboxViewLoc = glGetUniformLocation(skyboxShader.ID, "view");
+    unsigned int skyboxProjLoc = glGetUniformLocation(skyboxShader.ID, "projection");
+    glUniformMatrix4fv(skyboxViewLoc, 1, GL_FALSE, glm::value_ptr(skybox_view));
+    glUniformMatrix4fv(skyboxProjLoc, 1, GL_FALSE, glm::value_ptr(projection));
+
+    glBindVertexArray(VAO_skybox);
+    //glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+    glDepthMask(GL_TRUE);
+
     lightingShader.use();
     int lightsUsed = (int)floor(cam.lightsUsedControl);
     lightingShader.setInt("lightsUsed", lightsUsed);
 
     /* Render here */
-    glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the buffers
-
-    glm::mat4 model = glm::mat4(1.0f);
-    glm::mat4 view = glm::lookAt(cam.pos, cam.pos + cam.front, cam.up);
-    glm::mat4 projection = glm::perspective(glm::radians(45.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
-
-
     unsigned int modelLoc = glGetUniformLocation(lightingShader.ID, "model");
     unsigned int viewLoc = glGetUniformLocation(lightingShader.ID, "view");
     unsigned int projLoc = glGetUniformLocation(lightingShader.ID, "projection");
