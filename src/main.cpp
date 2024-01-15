@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -40,10 +41,34 @@ typedef struct {
 } Camera;
 
 typedef struct {
-  glm::vec3 specular;
-  glm::vec3 diffuse;
-  glm::vec3 ambient;
+  int vao;
+  int size;
+} Mesh;
+
+typedef struct {
+  Shader *shader;
+  int specularTexture;
+  float shininess;
+  int ambientTexture; // currently unused
+  int diffuseTexture;
+  int emissionValues;
+  int emissionMap;
+  glm::vec3 ambientColor;
+  glm::vec3 specularColor;
+  glm::vec3 diffuseColor;
+} Material;
+
+typedef struct {
+  Mesh *mesh; // vertex array object, created with createMesh
+  Material *mat; // material created with createMaterial
   glm::vec3 pos;
+  glm::vec3 rot;
+  glm::vec3 scale;
+  float angle;
+} GameObject;
+
+typedef struct {
+  GameObject *gameObject;
   float height;
   float constant;
   float linear;
@@ -60,6 +85,127 @@ typedef struct {
 typedef struct {
   Camera* cam;
 } GameContext;
+
+Material* createMaterial(Shader *shader, int specularTexture, float shininess, int diffuseTexture, glm::vec3 ambientColor, int emissionValues, int emissionMap)
+{
+  Material* mat = (Material *)malloc(sizeof(Material));
+
+  mat->shader = shader;
+  mat->specularTexture = specularTexture;
+  mat->shininess = 16.0f;
+  mat->diffuseTexture = diffuseTexture;
+  mat->ambientColor = ambientColor;
+  mat->emissionValues = emissionValues;
+  mat->emissionMap = emissionMap;
+  // only used by the light cubes; default vals for now
+  mat->specularColor = glm::vec3(1.0f);
+  mat->diffuseColor = glm::vec3(1.0f);
+  // unused for now:
+  mat->ambientTexture = -1;
+
+  return mat;
+};
+
+void destroyMaterial(Material *mat)
+{
+  free(mat);
+}
+
+GameObject* createGameObject(Mesh *mesh, Material *mat, glm::vec3 pos)
+{
+  GameObject *gameObject = (GameObject *)malloc(sizeof(GameObject));
+  gameObject->mesh = mesh;
+  gameObject->mat = mat;
+  gameObject->pos = pos;
+  gameObject->rot = glm::vec3(1.0f);
+  gameObject->scale = glm::vec3(1.0f);
+  gameObject->angle = 0.0f;
+  return gameObject;
+}
+
+void destroyGameObject(GameObject *gameObject)
+{
+  free(gameObject);
+}
+
+void renderGameObject(GameObject *gameObject, glm::mat4 view, glm::mat4 projection)
+{
+  Material *mat = gameObject->mat;
+  Shader *shader = mat->shader;
+  shader->use();
+
+  unsigned int modelLoc = glGetUniformLocation(shader->ID, "model");
+  unsigned int viewLoc = glGetUniformLocation(shader->ID, "view");
+  unsigned int projLoc = glGetUniformLocation(shader->ID, "projection");
+
+  shader->setInt("material.specular", mat->specularTexture);
+  shader->setFloat("material.shininess", mat->shininess);
+  shader->setInt("material.diffuse", mat->diffuseTexture);
+  shader->setVec3f("material.ambient", mat->ambientColor.r, mat->ambientColor.g, mat->ambientColor.b);
+  shader->setInt("material.emission", mat->emissionValues);
+  shader->setInt("material.emission_map", mat->emissionMap);
+
+  glm::mat4 model = glm::translate(glm::mat4(1.0f), gameObject->pos);
+  model = glm::rotate(model, gameObject->angle, gameObject->rot);
+  model = glm::scale(model, gameObject->scale);
+
+  glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+  glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+  glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+
+  glBindVertexArray(gameObject->mesh->vao);
+  glDrawArrays(GL_TRIANGLES, 0, gameObject->mesh->size);
+}
+
+void renderSkybox(GameObject *skybox, glm::mat4 view, glm::mat4 projection)
+{
+  Shader *shader = skybox->mat->shader;
+  shader->use();
+
+  glDepthMask(GL_FALSE);
+  glm::mat4 skyboxView = glm::mat4(glm::mat3(view));
+  unsigned int skyboxViewLoc = glGetUniformLocation(shader->ID, "view");
+  unsigned int skyboxProjLoc = glGetUniformLocation(shader->ID, "projection");
+  glUniformMatrix4fv(skyboxViewLoc, 1, GL_FALSE, glm::value_ptr(skyboxView));
+  glUniformMatrix4fv(skyboxProjLoc, 1, GL_FALSE, glm::value_ptr(projection));
+  glBindVertexArray(skybox->mesh->vao);
+  glDrawArrays(GL_TRIANGLES, 0, skybox->mesh->size);
+  glDepthMask(GL_TRUE);
+}
+
+void renderWalls(GameObject *wall, glm::mat4 view, glm::mat4 projection)
+{
+  for (unsigned int i = 0; i < 50; i++) {
+    for (unsigned int j = 0; j < 50; j++) {
+      glm::mat4 model = glm::mat4(1.0f);
+      // setting the position of the wall cubes on the CPU
+      model = glm::translate(model, glm::vec3(-25.0f, 0.0f, -25.0f));
+      model = glm::translate(model, glm::vec3((float)i, 0.0f, (float)j));
+
+      // pull translation from model matrix
+      wall->pos = glm::vec3(model[3]);
+
+      if (i == 0 || j == 0 || i == 49 - 1 || j == 49 - 1) {
+        renderGameObject(wall, view, projection);
+        // setting the position of the wall cubes on the GPU
+        // glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+        // rendering
+        // glDrawArrays(GL_TRIANGLES, 0, 36);
+
+        if (((i == 0 || i == 49 - 1) && j % 2 == 0) || ((j == 0 || j == 49 - 1) && i % 2 == 0)) {
+          // generating some extra cubes for a castle crenellation effect; CPU side
+          model = glm::translate(model, glm::vec3(0.0f, 1.0f, 0.0f));
+          wall->pos = glm::vec3(model[3]);
+          renderGameObject(wall, view, projection);
+          // gpu side
+          // glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+          // rendering
+          // glDrawArrays(GL_TRIANGLES, 0, 36);
+        }
+      }
+    }
+  }
+}
 
 void setupCam(Camera* cam)
 {
@@ -173,71 +319,108 @@ void changeCameraAngles(Camera *cam, float xoffset, float yoffset)
   }
 }
 
-void sendPointLightColors(Shader* shader, PointLight * lights, int numOfLights)
+void sendPointLightColors(Shader *shader, PointLight **lights, int numOfLights)
 {
   char fieldName[32] = "pointLights";
   char formattedSpecifier[32];
 
   for (int i = 0; i < numOfLights; i++) {
     snprintf(formattedSpecifier, 32, "%s[%d].%s", fieldName, i, "ambient");
-    shader->setVec3f(formattedSpecifier, lights[i].ambient.r, lights[i].ambient.g, lights[i].ambient.b);
+    shader->setVec3f(formattedSpecifier, lights[i]->gameObject->mat->ambientColor.r, lights[i]->gameObject->mat->ambientColor.g, lights[i]->gameObject->mat->ambientColor.b);
     snprintf(formattedSpecifier, 32, "%s[%d].%s", fieldName, i, "diffuse");
-    shader->setVec3f(formattedSpecifier, lights[i].diffuse.r, lights[i].diffuse.g, lights[i].diffuse.b);
+    shader->setVec3f(formattedSpecifier, lights[i]->gameObject->mat->diffuseColor.r, lights[i]->gameObject->mat->diffuseColor.g, lights[i]->gameObject->mat->diffuseColor.b);
     snprintf(formattedSpecifier, 32, "%s[%d].%s", fieldName, i, "specular");
-    shader->setVec3f(formattedSpecifier, lights[i].specular.r, lights[i].specular.g, lights[i].specular.b);
+    shader->setVec3f(formattedSpecifier, lights[i]->gameObject->mat->specularColor.r, lights[i]->gameObject->mat->specularColor.g, lights[i]->gameObject->mat->specularColor.b);
   }
 }
 
-void sendPointLightPositions(Shader* shader, PointLight * lights, int numOfLights)
+void sendPointLightPositions(Shader *shader, PointLight **lights, int numOfLights)
 {
   char fieldName[32] = "pointLights";
   char formattedSpecifier[32];
 
   for (int i = 0; i < numOfLights; i++) {
     snprintf(formattedSpecifier, 32, "%s[%d].%s", fieldName, i, "pos");
-    shader->setVec3f(formattedSpecifier, lights[i].pos.x, lights[i].pos.y, lights[i].pos.z);
+    shader->setVec3f(formattedSpecifier, lights[i]->gameObject->pos.x, lights[i]->gameObject->pos.y, lights[i]->gameObject->pos.z);
   }
 }
 
-void sendPointLightAttenuations(Shader* shader, PointLight * lights, int numOfLights)
+void sendPointLightAttenuations(Shader *shader, PointLight **lights, int numOfLights)
 {
   char fieldName[32] = "pointLights";
   char formattedSpecifier[32];
 
   for (int i = 0; i < numOfLights; i++) {
     snprintf(formattedSpecifier, 32, "%s[%d].%s", fieldName, i, "linear");
-    shader->setFloat(formattedSpecifier, lights[i].linear);
+    shader->setFloat(formattedSpecifier, lights[i]->linear);
     snprintf(formattedSpecifier, 32, "%s[%d].%s", fieldName, i, "constant");
-    shader->setFloat(formattedSpecifier, lights[i].constant);
+    shader->setFloat(formattedSpecifier, lights[i]->constant);
     snprintf(formattedSpecifier, 32, "%s[%d].%s", fieldName, i, "quadratic");
-    shader->setFloat(formattedSpecifier, lights[i].quadratic);
+    shader->setFloat(formattedSpecifier, lights[i]->quadratic);
   }
 }
 
-void setupPointLightDefaults(PointLight *light)
+PointLight *createPointLight(Mesh *mesh, Material *mat, glm::vec3 pos)
 {
-  light->pos = glm::vec3(0.7f,  0.2f,  2.0f);
-  light->height = light->pos.y;
-  light->specular = glm::vec3(1.0f);
-  light->diffuse = light->specular * 0.65f;
-  light->ambient = light->specular * 0.3f;
+  PointLight *light = (PointLight *)malloc(sizeof(PointLight));
+  light->gameObject = createGameObject(mesh, mat, pos);
+  light->height = light->gameObject->pos.y;
+  light->gameObject->mat->specularColor = glm::vec3(1.0f);
+  light->gameObject->mat->diffuseColor = light->gameObject->mat->specularColor * 0.65f;
+  light->gameObject->mat->ambientColor = light->gameObject->mat->specularColor * 0.3f;
   light->constant = 1.0f;
   light->linear = 0.15f;
   light->quadratic = 0.032f;
+  return light;
+}
+
+void destroyPointLight(PointLight *pointLight)
+{
+  destroyGameObject(pointLight->gameObject);
+  free(pointLight);
 }
 
 void updatePointLightColor(PointLight *light, glm::vec3 color)
 {
+  light->gameObject->mat->specularColor = color;
+  light->gameObject->mat->diffuseColor = light->gameObject->mat->specularColor * 0.65f;
+  light->gameObject->mat->ambientColor = light->gameObject->mat->specularColor * 0.3f;
+}
+
+void updateDirLightColor(DirLight *light, glm::vec3 color)
+{
   light->specular = color;
   light->diffuse = light->specular * 0.65f;
   light->ambient = light->specular * 0.3f;
 }
 
-void updateDirLightColor(PointLight *light, glm::vec3 color)
+void updatePointLights(PointLight **pointLights, int lightsUsed)
 {
-  light->specular = color;
-  light->diffuse = light->specular * 0.65f;
-  light->ambient = light->specular * 0.3f;
+  // light placement -- this is updating their positions in the CPU and GPU, but not rendering the light cubes themselves
+  for (int i = 0; i < lightsUsed; i++) {
+    GameObject *localGameObj = pointLights[i]->gameObject;
+    localGameObj->scale = glm::vec3(0.1f * (((i + 1) * 2) % 7));
+    float distance = sqrt(localGameObj->pos.x * localGameObj->pos.x + localGameObj->pos.z * localGameObj->pos.z);
+    localGameObj->pos.x = distance * sin(glfwGetTime() * (i % 11 + 1) / (2.0f + (i % 3) * 1.5));
+    localGameObj->pos.y = pointLights[i]->height + sin(glfwGetTime() * (i % 11 + 1) / 5.0f) * 1.3f;
+    localGameObj->pos.z = distance * cos(glfwGetTime() * (i % 11 + 1) / (2.0f + (i % 3) * 1.5));
+    glm::vec3 lightColor;
+    lightColor.x = abs(sin(glfwGetTime() * (i % 7 + 1) * 0.15f));
+    lightColor.y = abs(sin(glfwGetTime() * (i % 11 + 1) * 0.17f));
+    lightColor.z = abs(sin(glfwGetTime() * (i % 9 + 1) * 0.13f));
+    updatePointLightColor(pointLights[i], lightColor);
+  }
+}
+
+void renderPointLightCubes(Shader *lightCubeShader, PointLight **pointLights, int lightsUsed, glm::mat4 view, glm::mat4 projection)
+{
+  // iterating over the lights to render their models
+  for (int i = 0; i < lightsUsed; i++) {
+    // tell the lightCubeShader what's what
+    lightCubeShader->use();
+    lightCubeShader->setVec3f("light.specular", pointLights[i]->gameObject->mat->specularColor.r, pointLights[i]->gameObject->mat->specularColor.g, pointLights[i]->gameObject->mat->specularColor.b);
+    renderGameObject(pointLights[i]->gameObject, view, projection);
+  }
 }
 
 void setupDirLightDefaults(DirLight *light)
@@ -359,7 +542,7 @@ int loadTexture(int tex_number, const char *path)
   return texture;
 }
 
-int loadObject(float *vertices, unsigned int array_size, int with_attributes)
+Mesh *createMesh(float *vertices, unsigned int numVertices, unsigned int array_size, int with_attributes)
 {
   unsigned int VAO;
   glGenVertexArrays(1, &VAO);
@@ -396,7 +579,15 @@ int loadObject(float *vertices, unsigned int array_size, int with_attributes)
     glEnableVertexAttribArray(0);
   }
 
-  return VAO;
+  Mesh *mesh = (Mesh *)malloc(sizeof(Mesh));
+  mesh->vao = VAO;
+  mesh->size = numVertices;
+  return mesh;
+}
+
+void destroyMesh(Mesh *mesh)
+{
+  free(mesh);
 }
 
 unsigned int loadCubemap(int tex_number, std::vector<std::string> faces)
@@ -452,13 +643,12 @@ int main(int argc, char** argv)
   GLFWwindow* window;
   GameContext game;
   Camera cam;
+  int awesomeface_index = 4;
   setupCam(&cam);
   game.cam = &cam;
   float deltaTime = 0.0f; // Time between current frame and last frame
   float lastFrame = 0.0f; // Time of last frame
   //glm::vec3 lightPos(0.2f, 1.0f, 2.0f);
-  PointLight pointLights[MAX_NUM_OF_LIGHTS];
-  DirLight dirLight;
   glm::vec3 pointLightPositions[] = {
     glm::vec3(0.7f,  0.2f,  2.0f),
     glm::vec3(2.3f, 3.3f, -4.0f),
@@ -471,18 +661,22 @@ int main(int argc, char** argv)
     glm::vec3(3.5f,  6.0f, -3.0f),
     glm::vec3(0.5f,  8.0f, -3.0f)
   };
-
-  for (int i = 0; i < MAX_NUM_OF_LIGHTS; i++) {
-    setupPointLightDefaults(&pointLights[i]);
-
-    if (i < 10) {
-      pointLights[i].pos = pointLightPositions[i];
-    } else {
-      pointLights[i].pos = glm::vec3((i % 11) * 0.3f, (i % 13) * 0.3f, (i % 17) * 0.6f);
-    }
-
-    pointLights[i].height = pointLights[i].pos.y;
-  }
+  PointLight **pointLights = (PointLight **)malloc(sizeof(PointLight *) * MAX_NUM_OF_LIGHTS);
+  int numFlyingCubes = 10;
+  glm::vec3 cubePositions[] = {
+    glm::vec3(0.0f,  0.0f,  0.0f),
+    glm::vec3(2.0f,  5.0f, -15.0f),
+    glm::vec3(-1.5f, 2.2f, -2.5f),
+    glm::vec3(-3.8f, 2.0f, -12.3f),
+    glm::vec3(2.4f, -0.4f, -3.5f),
+    glm::vec3(-1.7f,  3.0f, -7.5f),
+    glm::vec3(3.3f, 3.0f, -2.5f),
+    glm::vec3(1.5f,  2.0f, -2.5f),
+    glm::vec3(1.5f,  0.2f, -1.5f),
+    glm::vec3(-1.3f,  1.0f, -1.5f),
+  };
+  GameObject **flyingCubes = (GameObject **)malloc(sizeof(GameObject *) * numFlyingCubes);
+  DirLight dirLight;
 
   setupDirLightDefaults(&dirLight);
 
@@ -540,25 +734,35 @@ int main(int argc, char** argv)
     "images/skybox/kenney_voxel_pack/skybox_side4.png"
   };
 
-
   // flip the rest of the images around vertically
   stbi_set_flip_vertically_on_load(true);
   unsigned int container = loadTexture(1, "images/container.jpg");
   unsigned int container2 = loadTexture(2, "images/container2.png");
   unsigned int container2_specular = loadTexture(3, "images/container2_specular.png");
-  unsigned int generic01 = loadTexture(4, "images/altdev/generic-07.png");
-  unsigned int generic02 = loadTexture(5, "images/altdev/generic-12.png");
-  unsigned int awesomeface = loadTexture(6, "images/awesomeface.png");
-  unsigned int matrix = loadTexture(7, "images/matrix.jpg");
-  unsigned int blank = loadTexture(8, "images/1x1.png");
-  unsigned int container2_emission_map = loadTexture(9, "images/container2_emission_map.png");
+  unsigned int container2_emission_map = loadTexture(4, "images/container2_emission_map.png");
+  unsigned int generic01 = loadTexture(5, "images/altdev/generic-07.png");
+  unsigned int generic02 = loadTexture(6, "images/altdev/generic-12.png");
+  unsigned int awesomeface = loadTexture(7, "images/awesomeface.png");
+  unsigned int matrixTexture = loadTexture(8, "images/matrix.jpg");
+  unsigned int blankTexture = loadTexture(9, "images/1x1.png");
+
+  // for some reason the skybox is flipped differently
   stbi_set_flip_vertically_on_load(false);
-  unsigned int cubemapTexture = loadCubemap(10, vfaces);
+  unsigned int skyboxTexture = loadCubemap(10, vfaces);
 
   /* end texture loading */
   Shader lightingShader("shaders/lighting_shader.vs", "shaders/lighting_shader.fs");
   Shader lightCubeShader("shaders/light_cube_shader.vs", "shaders/light_cube_shader.fs");
   Shader skyboxShader("shaders/skybox_shader.vs", "shaders/skybox_shader.fs");
+
+  glm::vec3 defaultAmbientColor = glm::vec3(0.2f);
+  //                                            (shader,           specular,            shininess,  diffuse,       ambient,             emissionVals,  emissionMap);
+  Material *containerMaterial   = createMaterial(&lightingShader,  blankTexture,        16.0f,      container,     defaultAmbientColor, blankTexture,  blankTexture);
+  Material *container2Material  = createMaterial(&lightingShader,  container2_specular, 16.0f,      container2,    defaultAmbientColor, matrixTexture, container2_emission_map);
+  Material *awesomefaceMaterial = createMaterial(&lightingShader,  blankTexture,        64.0f,      awesomeface,   defaultAmbientColor, awesomeface,   awesomeface);
+  Material *generic01Material   = createMaterial(&lightingShader,  blankTexture,        16.0f,      generic01,     defaultAmbientColor, blankTexture,  blankTexture);
+  Material *generic02Material   = createMaterial(&lightingShader,  blankTexture,        16.0f,      generic02,     defaultAmbientColor, blankTexture,  blankTexture);
+  Material *skyboxMaterial      = createMaterial(&skyboxShader,    blankTexture,        16.0f,      skyboxTexture, defaultAmbientColor, blankTexture,  blankTexture);
 
   /* declare vertices */
   float vertices_cube[] = {
@@ -663,37 +867,49 @@ int main(int argc, char** argv)
   //  1, 2, 3    // second triangle
   //};
 
-  unsigned int VAO = loadObject(vertices_cube, sizeof(vertices_cube), WITH_ATTRIBUTES);
-  unsigned int VAO_plane = loadObject(vertices_plane, sizeof(vertices_plane), WITH_ATTRIBUTES);
-  unsigned int lightCubeVAO = loadObject(vertices_cube, sizeof(vertices_cube), WITH_ATTRIBUTES);
-  unsigned int VAO_skybox = loadObject(vertices_skybox, sizeof(vertices_skybox), WITHOUT_ATTRIBUTES);
+  Mesh *cubeMesh = createMesh(vertices_cube, 36, sizeof(vertices_cube), WITH_ATTRIBUTES);
+  Mesh *planeMesh = createMesh(vertices_plane, 6, sizeof(vertices_plane), WITH_ATTRIBUTES);
+  Mesh *skyboxMesh = createMesh(vertices_skybox, 36, sizeof(vertices_skybox), WITHOUT_ATTRIBUTES);
+
+  for (int i = 0; i < MAX_NUM_OF_LIGHTS; i++) {
+    glm::vec3 pos;
+    // point light material is all blanks -- materials will need to be refactored later
+    // also though: we need 1 material / light, because they are all unique colors, changing at their own rates!
+    // corresponding frees in destroyPointLight
+    Material *pointLightMaterial  = createMaterial(&lightCubeShader, blankTexture,        16.0f,      blankTexture,  defaultAmbientColor, blankTexture,  blankTexture);
+
+    if (i < 10) {
+      pos = pointLightPositions[i];
+    } else {
+      pos = glm::vec3((i % 11) * 0.3f, (i % 13) * 0.3f, (i % 17) * 0.6f);
+    }
+
+    pointLights[i] = createPointLight(cubeMesh, pointLightMaterial, pos);
+  }
+
+  for (int i = 0; i < numFlyingCubes; i++) {
+    if (i == awesomeface_index) {
+      flyingCubes[i] = createGameObject(cubeMesh, awesomefaceMaterial, cubePositions[i]);
+    } else {
+      flyingCubes[i] = createGameObject(cubeMesh, container2Material, cubePositions[i]);
+    }
+  }
+
+  GameObject *plane = createGameObject(planeMesh, generic02Material, glm::vec3(-50.0f, -0.5f, -50.0f));
+  GameObject *wall = createGameObject(cubeMesh, generic01Material, glm::vec3(0.0f));
+  GameObject *skybox = createGameObject(skyboxMesh, skyboxMaterial, glm::vec3(0.0f));
 
   // un-comment to use wireframe mode:
   // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
   // set up textures in shader:
   skyboxShader.use();
-  skyboxShader.setInt("skybox", cubemapTexture);
+  skyboxShader.setInt("skybox", skyboxTexture);
   lightingShader.use(); // don't forget to activate the shader before setting uniforms!
-  lightingShader.setInt("skybox", cubemapTexture);
+  lightingShader.setInt("skybox", skyboxTexture);
 
-  // set up lighting
-  lightingShader.setVec3f("objectColor", 1.0f, 0.5f, 0.31f);
-  lightingShader.setVec3f("lightColor",  1.0f, 1.0f, 1.0f);
+  // set up lighting -- actually, these seem unused!
   sendPointLightAttenuations(&lightingShader, pointLights, MAX_NUM_OF_LIGHTS);
-
-  glm::vec3 cubePositions[] = {
-    glm::vec3(0.0f,  0.0f,  0.0f),
-    glm::vec3(2.0f,  5.0f, -15.0f),
-    glm::vec3(-1.5f, 2.2f, -2.5f),
-    glm::vec3(-3.8f, 2.0f, -12.3f),
-    glm::vec3(2.4f, -0.4f, -3.5f),
-    glm::vec3(-1.7f,  3.0f, -7.5f),
-    glm::vec3(3.3f, 3.0f, -2.5f),
-    glm::vec3(1.5f,  2.0f, -2.5f),
-    glm::vec3(1.5f,  0.2f, -1.5f),
-    glm::vec3(-1.3f,  1.0f, -1.5f),
-  };
 
   lightingShader.setVec3f("dirLight.dir", dirLight.dir.x, dirLight.dir.y, dirLight.dir.z);
   lightingShader.setVec3f("dirLight.diffuse", dirLight.diffuse.r, dirLight.diffuse.g, dirLight.diffuse.b);
@@ -711,140 +927,48 @@ int main(int argc, char** argv)
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the buffers
 
-    glDepthMask(GL_FALSE);
-    skyboxShader.use();
-
-    glm::mat4 model = glm::mat4(1.0f);
     glm::mat4 view = glm::lookAt(cam.pos, cam.pos + cam.front, cam.up);
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
-    glm::mat4 skybox_view = glm::mat4(glm::mat3(view));
 
-    unsigned int skyboxViewLoc = glGetUniformLocation(skyboxShader.ID, "view");
-    unsigned int skyboxProjLoc = glGetUniformLocation(skyboxShader.ID, "projection");
-    glUniformMatrix4fv(skyboxViewLoc, 1, GL_FALSE, glm::value_ptr(skybox_view));
-    glUniformMatrix4fv(skyboxProjLoc, 1, GL_FALSE, glm::value_ptr(projection));
-
-    glBindVertexArray(VAO_skybox);
-    //glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
-    glDrawArrays(GL_TRIANGLES, 0, 36);
-    glDepthMask(GL_TRUE);
-
-    lightingShader.use();
+    // lights begin
+    lightingShader.use(); // used for everything kinda
     int lightsUsed = (int)floor(cam.lightsUsedControl);
     lightingShader.setInt("lightsUsed", lightsUsed);
+    lightingShader.setVec3f("viewPos", cam.pos.x, cam.pos.y, cam.pos.z);  // this is the "player cam pos" :/
 
-    /* Render here */
-    unsigned int modelLoc = glGetUniformLocation(lightingShader.ID, "model");
-    unsigned int viewLoc = glGetUniformLocation(lightingShader.ID, "view");
-    unsigned int projLoc = glGetUniformLocation(lightingShader.ID, "projection");
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
-    glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
-    lightingShader.setVec3f("viewPos", cam.pos.x, cam.pos.y, cam.pos.z);
-
-    // revolving lights
-    for (int i = 0; i < lightsUsed; i++) {
-      float distance = sqrt(pointLights[i].pos.x * pointLights[i].pos.x + pointLights[i].pos.z * pointLights[i].pos.z);
-      pointLights[i].pos.x = distance * sin(glfwGetTime() * (i % 11 + 1) / (2.0f + (i % 3) * 1.5));
-      pointLights[i].pos.y = pointLights[i].height + sin(glfwGetTime() * (i % 11 + 1) / 5.0f) * 1.3f;
-      pointLights[i].pos.z = distance * cos(glfwGetTime() * (i % 11 + 1) / (2.0f + (i % 3) * 1.5));
-      glm::vec3 lightColor;
-      lightColor.x = abs(sin(glfwGetTime() * (i % 7 + 1) * 0.15f));
-      lightColor.y = abs(sin(glfwGetTime() * (i % 11 + 1) * 0.17f));
-      lightColor.z = abs(sin(glfwGetTime() * (i % 9 + 1) * 0.13f));
-      updatePointLightColor(&pointLights[i], lightColor);
-    }
-
+    // updating pointLight pos+color in the lightingShader on the GPU:
+    updatePointLights(pointLights, lightsUsed);
     sendPointLightColors(&lightingShader, pointLights, lightsUsed);
     sendPointLightPositions(&lightingShader, pointLights, lightsUsed);
 
-    /* begin to draw the actual triangles, using the vertex array buffer */
-    glBindVertexArray(VAO);
-
-    lightingShader.setFloat("material.shininess", 16.0f);
-    lightingShader.setVec3f("material.ambient", 1.0f, 0.5f, 0.31f);
-    lightingShader.setInt("material.emission", matrix);
-    lightingShader.setInt("material.emission_map", container2_emission_map);
-    lightingShader.setInt("material.diffuse", container2);
-    lightingShader.setInt("material.specular", container2_specular);
-
+    // updating positions of each flyingCube in cpu
     for (unsigned int i = 0; i < 10; i++) {
-      glm::mat4 model = glm::translate(glm::mat4(1.0f), cubePositions[i]);
       float angle = 20.0f * i;
-      int awesomeface_index = 4;
 
       if (i == awesomeface_index) {
-        lightingShader.setFloat("material.shininess", 64.0f);
-        lightingShader.setInt("material.diffuse", awesomeface);
-        lightingShader.setInt("material.specular", blank);
-        lightingShader.setInt("material.emission", awesomeface);
-        lightingShader.setInt("material.emission_map", awesomeface);
-        model = glm::rotate(model, (float)glfwGetTime() * glm::radians(angle), glm::vec3(1.0f, 1.0f, 0.5f));
+        flyingCubes[i]->rot = glm::vec3(1.0f, 1.0f, 0.5f);
+        flyingCubes[i]->angle = (float)glfwGetTime() * glm::radians(angle);
       } else if (i % 3 == 0) {
-        model = glm::rotate(model, (float)glfwGetTime() * glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
+        flyingCubes[i]->rot = glm::vec3(1.0f, 0.3f, 0.5f);
+        flyingCubes[i]->angle = (float)glfwGetTime() * glm::radians(angle);
       } else if (i % 2 == 0) {
-        model = glm::rotate(model, (float)glfwGetTime() * glm::radians(angle), glm::vec3(0.3f, 0.1f, 0.5f));
+        flyingCubes[i]->rot = glm::vec3(0.3f, 0.1f, 0.5f);
+        flyingCubes[i]->angle = (float)glfwGetTime() * glm::radians(angle);
       } else if (i <= 10) {
-        model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
-      }
-
-      glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-      glDrawArrays(GL_TRIANGLES, 0, 36);
-
-      if (i == awesomeface_index) {
-        lightingShader.setFloat("material.shininess", 16.0f);
-        lightingShader.setInt("material.emission", matrix);
-        lightingShader.setInt("material.diffuse", container2);
-        lightingShader.setInt("material.specular", container2_specular);
-        lightingShader.setInt("material.emission_map", container2_emission_map);
+        flyingCubes[i]->rot = glm::vec3(1.0f, 0.3f, 0.5f);
+        flyingCubes[i]->angle = angle; // no change to angle
       }
     }
 
-    lightingShader.setInt("material.specular", blank);
-    lightingShader.setInt("material.emission", blank);
-    lightingShader.setInt("material.emission_map", blank);
-    lightingShader.setInt("material.diffuse", generic01);
+    renderSkybox(skybox, view, projection);
+    renderWalls(wall, view, projection);
+    renderGameObject(plane, view, projection);
 
-    for (unsigned int i = 0; i < 50; i++) {
-      for (unsigned int j = 0; j < 50; j++) {
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(-25.0f, 0.0f, -25.0f));
-        model = glm::translate(model, glm::vec3((float)i, 0.0f, (float)j));
-
-        if (i == 0 || j == 0 || i == 49 - 1 || j == 49 - 1) {
-          glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-          glDrawArrays(GL_TRIANGLES, 0, 36);
-          model = glm::translate(model, glm::vec3(0.0f, 1.0f, 0.0f));
-
-          if (((i == 0 || i == 49 - 1) && j % 2 == 0) || ((j == 0 || j == 49 - 1) && i % 2 == 0)) {
-            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-            glDrawArrays(GL_TRIANGLES, 0, 36);
-          }
-        }
-      }
+    for (int i = 0; i < numFlyingCubes; i++) {
+      renderGameObject(flyingCubes[i], view, projection);
     }
 
-    lightingShader.setInt("material.diffuse", generic02);
-    model = glm::translate(glm::mat4(1.0f) , glm::vec3(-50.0f, -0.5f, -50.0f));
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    glBindVertexArray(VAO_plane);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
-
-    for (int i = 0; i < lightsUsed; i++) {
-      model = glm::translate(glm::mat4(1.0f), pointLights[i].pos);
-      model = glm::scale(model, glm::vec3(0.1f * (((i + 1) * 2) % 7)));
-      lightCubeShader.use();
-      lightCubeShader.setVec3f("light.specular", pointLights[i].specular.r, pointLights[i].specular.g, pointLights[i].specular.b);
-      unsigned int lightCubeModelLoc = glGetUniformLocation(lightCubeShader.ID, "model");
-      unsigned int lightCubeViewLoc = glGetUniformLocation(lightCubeShader.ID, "view");
-      unsigned int lightCubeProjLoc = glGetUniformLocation(lightCubeShader.ID, "projection");
-
-      glUniformMatrix4fv(lightCubeModelLoc, 1, GL_FALSE, glm::value_ptr(model));
-      glUniformMatrix4fv(lightCubeViewLoc, 1, GL_FALSE, glm::value_ptr(view));
-      glUniformMatrix4fv(lightCubeProjLoc, 1, GL_FALSE, glm::value_ptr(projection));
-      glBindVertexArray(lightCubeVAO);
-      glDrawArrays(GL_TRIANGLES, 0, 36);
-    }
+    renderPointLightCubes(&lightCubeShader, pointLights, lightsUsed, view, projection);
 
     /* Swap front and back buffers */
     glfwSwapBuffers(window);
@@ -852,6 +976,28 @@ int main(int argc, char** argv)
     /* Poll for and process events */
     glfwPollEvents();
   }
+
+  for (int i = 0; i < MAX_NUM_OF_LIGHTS; i++) {
+    // these materials are created one-per-light so the lights can be unique colors
+    destroyMaterial(pointLights[i]->gameObject->mat);
+    destroyPointLight(pointLights[i]);
+  }
+
+  for (int i = 0; i < numFlyingCubes; i++) {
+    destroyGameObject(flyingCubes[i]);
+  }
+
+  free(flyingCubes);
+  free(pointLights);
+  destroyMaterial(containerMaterial);
+  destroyMaterial(container2Material);
+  destroyMaterial(awesomefaceMaterial);
+  destroyMaterial(generic01Material);
+  destroyMaterial(generic02Material);
+  destroyMaterial(skyboxMaterial);
+  destroyMesh(cubeMesh);
+  destroyMesh(planeMesh);
+  destroyMesh(skyboxMesh);
 
   glfwTerminate();
   return 0;
