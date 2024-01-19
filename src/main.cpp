@@ -13,6 +13,8 @@
 #define INFOLOG_LENGTH 512
 #define WITHOUT_ATTRIBUTES 0
 #define WITH_ATTRIBUTES 1
+#define FOR_REAL 0
+#define FOR_DEPTH 1
 #define BUFFER_OFFSET(i) ((char *)NULL + (i))
 
 typedef struct {
@@ -369,8 +371,8 @@ PointLight *createPointLight(Mesh *mesh, Material *mat, glm::vec3 pos)
   light->gameObject->mat->diffuseColor = light->gameObject->mat->specularColor * 0.65f;
   light->gameObject->mat->ambientColor = light->gameObject->mat->specularColor * 0.3f;
   light->constant = 1.0f;
-  light->linear = 0.15f;
-  light->quadratic = 0.032f;
+  light->linear = 0.09f;
+  light->quadratic = 0.016f;
   return light;
 }
 
@@ -636,6 +638,24 @@ unsigned int loadCubemap(int tex_number, std::vector<std::string> faces)
   return textureID;
 }
 
+void renderScene(GameObject *skybox, GameObject *wall, GameObject *plane, GameObject **flyingCubes, int numFlyingCubes, Shader *lightCubeShader, PointLight **pointLights, int lightsUsed, glm::mat4 view, glm::mat4 projection, int mode)
+{
+  if (mode == FOR_REAL) { // as opposed to FOR_DEPTH
+    renderSkybox(skybox, view, projection);
+  }
+
+  renderWalls(wall, view, projection);
+  renderGameObject(plane, view, projection);
+
+  for (int i = 0; i < numFlyingCubes; i++) {
+    renderGameObject(flyingCubes[i], view, projection);
+  }
+
+  if (mode == FOR_REAL) {
+    renderPointLightCubes(lightCubeShader, pointLights, lightsUsed, view, projection);
+  }
+}
+
 int main(int argc, char** argv)
 {
   const int WINDOW_WIDTH = 1280;
@@ -754,6 +774,7 @@ int main(int argc, char** argv)
   Shader lightingShader("shaders/lighting_shader.vs", "shaders/lighting_shader.fs");
   Shader lightCubeShader("shaders/light_cube_shader.vs", "shaders/light_cube_shader.fs");
   Shader skyboxShader("shaders/skybox_shader.vs", "shaders/skybox_shader.fs");
+  Shader debugDepthShader("shaders/lighting_shader.vs", "shaders/debug_quad.fs");
 
   glm::vec3 defaultAmbientColor = glm::vec3(0.2f);
   //                                            (shader,           specular,            shininess,  diffuse,       ambient,             emissionVals,  emissionMap);
@@ -763,6 +784,7 @@ int main(int argc, char** argv)
   Material *generic01Material   = createMaterial(&lightingShader,  blankTexture,        16.0f,      generic01,     defaultAmbientColor, blankTexture,  blankTexture);
   Material *generic02Material   = createMaterial(&lightingShader,  blankTexture,        16.0f,      generic02,     defaultAmbientColor, blankTexture,  blankTexture);
   Material *skyboxMaterial      = createMaterial(&skyboxShader,    blankTexture,        16.0f,      skyboxTexture, defaultAmbientColor, blankTexture,  blankTexture);
+  Material *depthMaterial       = createMaterial(&debugDepthShader, blankTexture,       16.0f,      generic01,  defaultAmbientColor, blankTexture,  blankTexture);
 
   /* declare vertices */
   float vertices_cube[] = {
@@ -809,13 +831,22 @@ int main(int argc, char** argv)
     -0.5f,  0.5f, -0.5f,   0.0f, 1.0f, 0.0f,    0.0f, 1.0f
   };
 
+  float vertices_quad[] = {
+    -0.5f, 0.0f, -0.5f,  0.0f, 1.0f, 0.0f,    0.0f, 0.0f,
+    0.5f,  0.0f, -0.5f,  0.0f, 1.0f, 0.0f,    1.0f, 0.0f,
+    0.5f,  0.0f,  0.5f,  0.0f, 1.0f, 0.0f,    1.0f, 1.0f,
+    -0.5f, 0.0f, -0.5f,  0.0f, 1.0f, 0.0f,    0.0f, 0.0f,
+    -0.5f, 0.0f,  0.5f,  0.0f, 1.0f, 0.0f,    0.0f, 1.0f,
+    0.5f,  0.0f,  0.5f,  0.0f, 1.0f, 0.0f,    1.0f, 1.0f,
+  };
+
   float vertices_plane[] = {
-    0.0f,   0.0f, 0.0f,    0.0f, 1.0f, 0.0f,    0.0f, 0.0f,
-    100.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,    100.0f, 0.0f,
-    100.0f, 0.0f, 100.0f,  0.0f, 1.0f, 0.0f,    100.0f, 100.0f,
-    0.0f,   0.0f, 0.0f,    0.0f, 1.0f, 0.0f,    0.0f, 0.0f,
-    0.0f,   0.0f, 100.0f,  0.0f, 1.0f, 0.0f,    0.0f, 100.0f,
-    100.0f, 0.0f, 100.0f,  0.0f, 1.0f, 0.0f,    100.0f, 100.0f,
+    -0.5f, 0.0f, -0.5f,  0.0f, 1.0f, 0.0f,    0.0f,   0.0f,
+    0.5f,  0.0f, -0.5f,  0.0f, 1.0f, 0.0f,    100.0f, 0.0f,
+    0.5f,  0.0f,  0.5f,  0.0f, 1.0f, 0.0f,    100.0f, 100.0f,
+    -0.5f, 0.0f, -0.5f,  0.0f, 1.0f, 0.0f,    0.0f,   0.0f,
+    -0.5f, 0.0f,  0.5f,  0.0f, 1.0f, 0.0f,    0.0f,   100.0f,
+    0.5f,  0.0f,  0.5f,  0.0f, 1.0f, 0.0f,    100.0f, 100.0f,
   };
 
   float vertices_skybox[] = {
@@ -867,8 +898,31 @@ int main(int argc, char** argv)
   //  1, 2, 3    // second triangle
   //};
 
+  unsigned int depthMapFBO;
+  glGenFramebuffers(1, &depthMapFBO);
+
+  const unsigned int SHADOW_WIDTH = 8192, SHADOW_HEIGHT = 8192;
+  unsigned int depthMap;
+  glGenTextures(1, &depthMap);
+  glBindTexture(GL_TEXTURE_2D, depthMap);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT,
+               SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+  float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+  glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+
+  glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+  glDrawBuffer(GL_NONE);
+  glReadBuffer(GL_NONE);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
   Mesh *cubeMesh = createMesh(vertices_cube, 36, sizeof(vertices_cube), WITH_ATTRIBUTES);
   Mesh *planeMesh = createMesh(vertices_plane, 6, sizeof(vertices_plane), WITH_ATTRIBUTES);
+  Mesh *quadMesh = createMesh(vertices_quad, 6, sizeof(vertices_quad), WITH_ATTRIBUTES);
   Mesh *skyboxMesh = createMesh(vertices_skybox, 36, sizeof(vertices_skybox), WITHOUT_ATTRIBUTES);
 
   for (int i = 0; i < MAX_NUM_OF_LIGHTS; i++) {
@@ -895,9 +949,15 @@ int main(int argc, char** argv)
     }
   }
 
-  GameObject *plane = createGameObject(planeMesh, generic02Material, glm::vec3(-50.0f, -0.5f, -50.0f));
+  GameObject *plane = createGameObject(planeMesh, generic02Material, glm::vec3(0.0f, -0.5f, 0.0f));
+  GameObject *debugQuad = createGameObject(quadMesh, depthMaterial, glm::vec3(1.0f, 0.5f, 0.0f));
   GameObject *wall = createGameObject(cubeMesh, generic01Material, glm::vec3(0.0f));
   GameObject *skybox = createGameObject(skyboxMesh, skyboxMaterial, glm::vec3(0.0f));
+  plane->scale = glm::vec3(100.0f, 0.0f, 100.0f);
+  debugQuad->rot = glm::vec3(1.0f, 0.0f, 0.0f);
+  debugQuad->angle = glm::radians(90.0f);
+  debugQuad->mat->diffuseTexture = depthMap;
+  debugQuad->mat->specularTexture = depthMap;
 
   // un-comment to use wireframe mode:
   // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -905,8 +965,11 @@ int main(int argc, char** argv)
   // set up textures in shader:
   skyboxShader.use();
   skyboxShader.setInt("skybox", skyboxTexture);
+  debugDepthShader.use();
+  debugDepthShader.setInt("depthMap", depthMap);
   lightingShader.use(); // don't forget to activate the shader before setting uniforms!
   lightingShader.setInt("skybox", skyboxTexture);
+  lightingShader.setInt("shadowMap", depthMap);
 
   // set up lighting -- actually, these seem unused!
   sendPointLightAttenuations(&lightingShader, pointLights, MAX_NUM_OF_LIGHTS);
@@ -924,22 +987,9 @@ int main(int argc, char** argv)
     processInput(window, &cam);
     processCamera(&cam, deltaTime, currentFrame);
 
-    glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the buffers
-
-    glm::mat4 view = glm::lookAt(cam.pos, cam.pos + cam.front, cam.up);
-    glm::mat4 projection = glm::perspective(glm::radians(45.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
-
-    // lights begin
-    lightingShader.use(); // used for everything kinda
     int lightsUsed = (int)floor(cam.lightsUsedControl);
-    lightingShader.setInt("lightsUsed", lightsUsed);
-    lightingShader.setVec3f("viewPos", cam.pos.x, cam.pos.y, cam.pos.z);  // this is the "player cam pos" :/
-
     // updating pointLight pos+color in the lightingShader on the GPU:
     updatePointLights(pointLights, lightsUsed);
-    sendPointLightColors(&lightingShader, pointLights, lightsUsed);
-    sendPointLightPositions(&lightingShader, pointLights, lightsUsed);
 
     // updating positions of each flyingCube in cpu
     for (unsigned int i = 0; i < 10; i++) {
@@ -960,15 +1010,48 @@ int main(int argc, char** argv)
       }
     }
 
-    renderSkybox(skybox, view, projection);
-    renderWalls(wall, view, projection);
-    renderGameObject(plane, view, projection);
+    // proj and view set up for depth buffer
+    float near_plane = 10.0f, far_plane = 64.0f;
+    glm::mat4 projection = glm::ortho(-32.0f, 32.0f, -32.0f, 32.0f, near_plane, far_plane);
+    glm::mat4 view = glm::lookAt(glm::vec3(-15.0f, 19.0f, -30.0f),
+                                 glm::vec3(0.0f, 0.0f,  0.0f),
+                                 glm::vec3(0.0f, 1.0f,  0.0f));
+    glm::mat4 lightSpaceMatrix = projection * view;
+    unsigned int lightSpaceLoc = glGetUniformLocation(lightingShader.ID, "lightSpaceMatrix");
+    glUniformMatrix4fv(lightSpaceLoc, 1, GL_FALSE, glm::value_ptr(lightSpaceMatrix));
+    // lights begin
+    lightingShader.use(); // used for everything kinda
+    lightingShader.setInt("lightsUsed", lightsUsed);
+    lightingShader.setVec3f("viewPos", cam.pos.x, cam.pos.y, cam.pos.z);  // this is the "player cam pos" :/
 
-    for (int i = 0; i < numFlyingCubes; i++) {
-      renderGameObject(flyingCubes[i], view, projection);
-    }
+    sendPointLightColors(&lightingShader, pointLights, lightsUsed);
+    sendPointLightPositions(&lightingShader, pointLights, lightsUsed);
 
-    renderPointLightCubes(&lightCubeShader, pointLights, lightsUsed, view, projection);
+    // for shadow mapping:
+    glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+    glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    glCullFace(GL_FRONT);
+    // render to depth buffer
+    renderScene(skybox, wall, plane, flyingCubes, numFlyingCubes, &lightCubeShader, pointLights, lightsUsed, view, projection, FOR_DEPTH);
+
+    // put framebuffer back to normal
+    glCullFace(GL_BACK);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, WINDOW_WIDTH * 2, WINDOW_HEIGHT * 2);
+    glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the buffers
+
+    projection = glm::perspective(glm::radians(45.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
+    view = glm::lookAt(cam.pos, cam.pos + cam.front, cam.up);
+
+    debugDepthShader.use();
+    debugDepthShader.setFloat("near_plane", near_plane);
+    debugDepthShader.setFloat("far_plane", far_plane);
+    glActiveTexture(GL_TEXTURE0 + depthMap);
+    glBindTexture(GL_TEXTURE_2D, depthMap);
+    renderGameObject(debugQuad, view, projection);
+    renderScene(skybox, wall, plane, flyingCubes, numFlyingCubes, &lightCubeShader, pointLights, lightsUsed, view, projection, FOR_REAL);
 
     /* Swap front and back buffers */
     glfwSwapBuffers(window);
